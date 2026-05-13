@@ -115,7 +115,8 @@ const state = {
     managers: [],
     dms: [],
     storeManagers: {},
-    storeDMs: {}
+    storeDMs: {},
+    storeManagerNames: {}
   },
   adminTab: 'stores',
   editIdx: null,
@@ -174,7 +175,8 @@ async function fetchDirectoryFromGitHub(){
         managers: [...DEFAULT_MANAGERS],
         dms: [...DEFAULT_DMS],
         storeManagers: {},
-        storeDMs: {}
+        storeDMs: {},
+        storeManagerNames: {}
       },
       sha: null,
       updatedAt: null,
@@ -191,7 +193,8 @@ async function fetchDirectoryFromGitHub(){
       managers: Array.isArray(json.managers) ? json.managers : [],
       dms: Array.isArray(json.dms) ? json.dms : [],
       storeManagers: (json.storeManagers && typeof json.storeManagers === 'object') ? json.storeManagers : {},
-      storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {}
+      storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
+      storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {}
     },
     sha: meta.sha,
     updatedAt: json.updatedAt || null,
@@ -214,7 +217,8 @@ async function pushDirectoryToGitHub(){
     managers: state.data.managers,
     dms: state.data.dms,
     storeManagers: state.data.storeManagers,
-    storeDMs: state.data.storeDMs
+    storeDMs: state.data.storeDMs,
+    storeManagerNames: state.data.storeManagerNames
   };
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
   const body = {
@@ -326,7 +330,7 @@ function renderAdmin(){
   const placeholder = isStores ? 'e.g. Springfield Xfinity Store' : 'e.g. jsmith@blufoxmobile.com';
   const labelText = isStores ? 'Store Location' : adminTab === 'managers' ? 'Manager Email' : 'DM Email';
   const subtitle = isStores
-    ? "Set each store's Manager and DM email. The credit form auto-routes approvals to these emails."
+    ? "Set each store's Manager name, Manager email, and DM email. These values feed the credit form and the New Hire onboarding form."
     : adminTab === 'managers'
       ? 'Manager email options used by the per-store dropdowns.'
       : 'District Manager email options used by the per-store dropdowns.';
@@ -338,9 +342,10 @@ function renderAdmin(){
     }
     const mgr = state.data.storeManagers[item] || '';
     const dm  = state.data.storeDMs[item] || '';
+    const mgrName = state.data.storeManagerNames[item] || '';
     const mgrOpts = `<option value="">${fallbackNote}</option>` + state.data.managers.map(m => `<option value="${escapeAttr(m)}"${m===mgr?' selected':''}>${escapeHtml(m)}</option>`).join('');
     const dmOpts  = `<option value="">${fallbackNote}</option>` + state.data.dms.map(d => `<option value="${escapeAttr(d)}"${d===dm?' selected':''}>${escapeHtml(d)}</option>`).join('');
-    const mappedBadge = (mgr || dm)
+    const mappedBadge = (mgr || dm || mgrName)
       ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
       : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
@@ -354,10 +359,12 @@ function renderAdmin(){
           <button class="icon-btn" style="color:var(--red);font-size:15px" onclick="removeItem(${i})" title="Remove store">✕</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:70px 1fr;gap:8px 10px;align-items:center;font-size:12px">
-        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Manager</span>
+      <div style="display:grid;grid-template-columns:85px 1fr;gap:8px 10px;align-items:center;font-size:12px">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Mgr Name</span>
+        <input class="inp" type="text" placeholder="e.g. Jane Smith" value="${escapeAttr(mgrName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreManagerName(${i}, this.value)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Mgr Email</span>
         <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'manager',this.value)">${mgrOpts}</select>
-        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM</span>
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
         <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'dm',this.value)">${dmOpts}</select>
       </div>
     </div>`;
@@ -451,6 +458,7 @@ function removeItem(i){
     const n = state.data.stores[i];
     delete state.data.storeManagers[n];
     delete state.data.storeDMs[n];
+    delete state.data.storeManagerNames[n];
   }
   state.data[tab].splice(i, 1);
   state.dirty = true;
@@ -480,6 +488,10 @@ function saveEdit(){
           state.data.storeDMs[v] = state.data.storeDMs[o];
           delete state.data.storeDMs[o];
         }
+        if(state.data.storeManagerNames[o] !== undefined){
+          state.data.storeManagerNames[v] = state.data.storeManagerNames[o];
+          delete state.data.storeManagerNames[o];
+        }
       }
     }
     state.data[tab][state.editIdx] = v;
@@ -499,6 +511,14 @@ function updateStoreMapping(i, t, v){
   }
   state.dirty = true;
   // No full re-render needed — just refresh the status pill / save button
+  renderAdmin();
+}
+function updateStoreManagerName(i, v){
+  const n = state.data.stores[i];
+  const trimmed = (v || '').trim();
+  if(trimmed) state.data.storeManagerNames[n] = trimmed;
+  else delete state.data.storeManagerNames[n];
+  state.dirty = true;
   renderAdmin();
 }
 
