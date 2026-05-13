@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Store Directory Admin — Blufox</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e1a;--card:#111827;--border:#1e293b;--accent:#3b82f6;--glow:rgba(59,130,246,0.25);--red:#ef4444;--green:#22c55e;--text:#f1f5f9;--muted:#94a3b8;--inp:#0f172a;--inpb:#334155;--warn:#fbbf24;--orange:#f97316}
+body{min-height:100vh;background:linear-gradient(175deg,var(--bg) 0%,#0f172a 100%);font-family:'DM Sans',sans-serif;color:var(--text);padding:24px 12px 60px;display:flex;justify-content:center}
+input,select,button{font-family:inherit}
+select option{background:var(--inp);color:var(--text)}
+input::placeholder{color:var(--muted);opacity:.6}
+input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--glow)!important}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--inpb);border-radius:3px}
+.lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
+.inp{width:100%;padding:11px 14px;font-size:15px;color:var(--text);background:var(--inp);border:1.5px solid var(--inpb);border-radius:8px;outline:none;transition:border-color .2s,box-shadow .2s}
+.sel{appearance:none;width:100%;padding:11px 14px;padding-right:36px;font-size:15px;color:var(--text);background:var(--inp) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'><path d='M7 10l5 5 5-5z'/></svg>") no-repeat right 10px center;background-size:18px;border:1.5px solid var(--inpb);border-radius:8px;cursor:pointer;outline:none}
+.sel.placeholder{color:var(--muted)}
+.err-border{border-color:var(--red)!important}
+.hint{font-size:11px;color:var(--muted);margin:4px 0 0}
+.btn-primary{padding:12px 22px;font-size:14px;font-weight:700;letter-spacing:.02em;color:#fff;background:linear-gradient(135deg,var(--accent),#2563eb);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 20px var(--glow);transition:transform .15s,box-shadow .2s}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-primary:disabled{background:var(--inpb);box-shadow:none;cursor:not-allowed;transform:none}
+.btn-secondary{padding:12px 22px;font-size:14px;font-weight:700;color:var(--text);background:transparent;border:1.5px solid var(--inpb);border-radius:10px;cursor:pointer}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,.35)}
+.tab-btn{flex:1;padding:12px 10px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.tab-btn.active{color:#fff;background:linear-gradient(135deg,#1e3a5f,#1e293b);border:1.5px solid var(--accent)}
+.tab-btn:not(.active){color:var(--muted);background:var(--card);border:1.5px solid var(--border)}
+.badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;min-width:20px;text-align:center;color:#fff}
+.list-item{display:flex;align-items:center;gap:10px;padding:10px 18px}
+.list-item:not(:last-child){border-bottom:1px solid var(--border)}
+.icon-btn{background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;opacity:.7;transition:opacity .15s}
+.icon-btn:hover{opacity:1}
+.logo-svg{width:46px;height:46px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--accent),#1e3a5f);border-radius:10px;color:#fff;font-weight:700;font-size:14px;letter-spacing:.04em;font-family:'Space Grotesk',sans-serif}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);padding:12px 22px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.4);opacity:0;transition:opacity .25s,transform .25s;z-index:9999;pointer-events:none;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+.toast.success{background:linear-gradient(135deg,var(--green),#16a34a);color:#fff}
+.toast.error{background:linear-gradient(135deg,var(--red),#dc2626);color:#fff}
+.toast.info{background:var(--card);color:var(--text);border:1px solid var(--accent)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9000;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.show{opacity:1;pointer-events:auto}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:480px;width:100%;box-shadow:0 25px 50px rgba(0,0,0,.4)}
+.modal h2{font-size:20px;font-weight:700;margin:0 0 8px}
+.modal p{font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);background:rgba(148,163,184,.08);padding:6px 12px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase}
+.status-pill.dirty{color:var(--warn);background:rgba(251,191,36,.12)}
+.status-pill.saved{color:var(--green);background:rgba(34,197,94,.12)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+</style>
+</head>
+<body>
+<div id="app" style="width:100%;max-width:720px"></div>
+<div class="toast" id="toast"></div>
+
+<!-- TOKEN MODAL -->
+<div class="modal-overlay" id="tokenModal">
+  <div class="modal">
+    <h2>GitHub Token Settings</h2>
+    <p>This page reads and writes <code style="color:var(--accent)">data/store-directory.json</code> in the <strong>Daily-Sales-Report</strong> repo. The embedded token is used by default. Override only if you need a different account's token.</p>
+    <input type="password" class="inp" id="tokenInput" placeholder="Leave blank to use embedded token">
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+      <button class="btn-secondary" onclick="closeTokenModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveToken()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+//  CONFIG
+// ============================================================================
+const CONFIG = {
+  REPO_OWNER: 'blufoxmobile',
+  REPO_NAME: 'Daily-Sales-Report',
+  BRANCH: 'main',
+  DATA_PATH: 'data/store-directory.json',
+  RAW_BASE: 'https://raw.githubusercontent.com',
+  API_BASE: 'https://api.github.com'
+};
+const ADMIN_PASS = 'Password123!';
+const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
+
+// ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
+const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
+const DEFAULT_MANAGERS = ["sOrozco@blufoxmobile.com","ZSalazar@blufoxmobile.com","fSalazar@blufoxmobile.com","ZMitchell@blufoxmobile.com","GWilliams@blufoxmobile.com","juCarrillo@blufoxmobile.com","tChowdhury@blufoxmobile.com","jTrentham@blufoxmobile.com","ABell@blufoxmobile.com","vHuerto@blufoxmobile.com","maRodriguez@blufoxmobile.com","CCrooks@blufoxmobile.com","zSpradling@blufoxmobile.com","ISolis@blufoxmobile.com","miJackson@blufoxmobile.com","dRegan@blufoxmobile.com","kKirkland@blufoxmobile.com","IDhorajiwala@blufoxmobile.com","OsGarcia@blufoxmobile.com","HDodge@blufoxmobile.com","EWashington@blufoxmobile.com"];
+const DEFAULT_DMS = ["jcabrales@blufoxmobile.com","IDhorajiwala@blufoxmobile.com","mbrooks@blufoxmobile.com","juCarrillo@blufoxmobile.com","jbilbrey@blufoxmobile.com"];
+
+// ---- Embedded GitHub token (XOR-encoded, same scheme as crm.html) ----
+// If you need to update the token, edit _TOKEN_ENCODED in BOTH crm.html and this file
+// using the same _TOKEN_KEY ("blufox"). The encoder snippet is:
+//   const t='YOUR_TOKEN'; const k='blufox';
+//   JSON.stringify([...t].map((c,i)=>c.charCodeAt(0)^k.charCodeAt(i%k.length)))
+const _TOKEN_ENCODED = [5,5,1,14,26,26,61,28,20,18,48,73,83,47,52,46,45,76,85,61,69,14,93,0,51,59,66,53,90,48,53,35,22,57,32,10,17,88,71,86,1,46,16,58,3,15,29,32,59,26,1,50,34,21,17,5,48,55,31,11,49,10,61,62,45,8,49,30,58,21,43,8,27,57,24,28,31,34,42,63,58,85,46,63,39,4,23,52,89,57,48,15,63];
+const _TOKEN_KEY = 'blufox';
+const EMBEDDED_TOKEN = _TOKEN_ENCODED.map((c,i)=>String.fromCharCode(c ^ _TOKEN_KEY.charCodeAt(i % _TOKEN_KEY.length))).join('');
+
+// ============================================================================
+//  STATE
+// ============================================================================
+const state = {
+  authed: false,
+  loaded: false,
+  saving: false,
+  dirty: false,
+  sha: null,
+  updatedAt: null,
+  data: {
+    stores: [],
+    managers: [],
+    dms: [],
+    storeManagers: {},
+    storeDMs: {}
+  },
+  adminTab: 'stores',
+  editIdx: null,
+  editVal: ''
+};
+
+const app = document.getElementById('app');
+
+// ============================================================================
+//  TOKEN HANDLING (embedded with localStorage override)
+// ============================================================================
+function getToken(){
+  const override = localStorage.getItem('blufox_github_token');
+  return override || EMBEDDED_TOKEN;
+}
+function openTokenModal(){
+  document.getElementById('tokenInput').value = localStorage.getItem('blufox_github_token') || '';
+  document.getElementById('tokenModal').classList.add('show');
+}
+function closeTokenModal(){
+  document.getElementById('tokenModal').classList.remove('show');
+}
+function saveToken(){
+  const t = document.getElementById('tokenInput').value.trim();
+  if(t){ localStorage.setItem('blufox_github_token', t); showToast('Custom token saved','success'); }
+  else { localStorage.removeItem('blufox_github_token'); showToast('Using embedded token','success'); }
+  closeTokenModal();
+}
+
+// ============================================================================
+//  TOAST
+// ============================================================================
+let toastTimer = null;
+function showToast(msg, kind){
+  const el = document.getElementById('toast');
+  el.className = 'toast show ' + (kind || 'info');
+  el.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 3000);
+}
+
+// ============================================================================
+//  GITHUB I/O
+// ============================================================================
+async function fetchDirectoryFromGitHub(){
+  const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}?ref=${CONFIG.BRANCH}&_=${Date.now()}`;
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  const token = getToken();
+  if(token) headers['Authorization'] = `Bearer ${token}`;
+  const resp = await fetch(url, { headers });
+  if(resp.status === 404){
+    // File doesn't exist yet — seed with defaults
+    return {
+      data: {
+        stores: [...DEFAULT_STORES],
+        managers: [...DEFAULT_MANAGERS],
+        dms: [...DEFAULT_DMS],
+        storeManagers: {},
+        storeDMs: {}
+      },
+      sha: null,
+      updatedAt: null,
+      firstTime: true
+    };
+  }
+  if(!resp.ok) throw new Error('GitHub fetch failed: HTTP ' + resp.status);
+  const meta = await resp.json();
+  const decoded = atob(meta.content.replace(/\n/g,''));
+  const json = JSON.parse(decoded);
+  return {
+    data: {
+      stores: Array.isArray(json.stores) ? json.stores : [],
+      managers: Array.isArray(json.managers) ? json.managers : [],
+      dms: Array.isArray(json.dms) ? json.dms : [],
+      storeManagers: (json.storeManagers && typeof json.storeManagers === 'object') ? json.storeManagers : {},
+      storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {}
+    },
+    sha: meta.sha,
+    updatedAt: json.updatedAt || null,
+    firstTime: false
+  };
+}
+
+async function pushDirectoryToGitHub(){
+  const token = getToken();
+  if(!token){ showToast('GitHub token unavailable','error'); return false; }
+  // Refetch sha just before write to minimize conflict on concurrent edits
+  let currentSha = state.sha;
+  try {
+    const fresh = await fetchDirectoryFromGitHub();
+    currentSha = fresh.sha;
+  } catch(_) { /* fall through with cached sha */ }
+  const payload = {
+    updatedAt: new Date().toISOString(),
+    stores: state.data.stores,
+    managers: state.data.managers,
+    dms: state.data.dms,
+    storeManagers: state.data.storeManagers,
+    storeDMs: state.data.storeDMs
+  };
+  const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
+  const body = {
+    message: 'Update store directory via admin page',
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+    branch: CONFIG.BRANCH
+  };
+  if(currentSha) body.sha = currentSha;
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if(!resp.ok){
+    const errText = await resp.text().catch(()=> '');
+    throw new Error('GitHub write failed: HTTP ' + resp.status + ' — ' + errText.slice(0,200));
+  }
+  const data = await resp.json();
+  state.sha = data.content.sha;
+  state.updatedAt = payload.updatedAt;
+  return true;
+}
+
+// ============================================================================
+//  LOGIN SCREEN
+// ============================================================================
+function renderLogin(){
+  app.innerHTML = `
+  <div style="max-width:420px;margin:80px auto 0;animation:fadeUp .4s ease both">
+    <div class="card" style="text-align:center;padding:32px 28px">
+      <div class="logo-svg" style="margin:0 auto 14px">SD</div>
+      <h2 style="font-size:22px;font-weight:700;margin:0 0 6px">Store Directory Admin</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 24px;line-height:1.5">Manage stores, managers, and DM assignments.<br>Changes save directly to GitHub.</p>
+      <div id="pwShake">
+        <input class="inp" type="password" id="pwInput" placeholder="Password" style="text-align:center;letter-spacing:.1em">
+      </div>
+      <p id="pwErr" style="color:var(--red);font-size:13px;margin:8px 0 0;display:none">Incorrect password</p>
+      <button class="btn-primary" style="margin-top:18px;width:100%" onclick="tryLogin()">Unlock</button>
+      <button onclick="openTokenModal()" style="margin-top:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
+    </div>
+  </div>`;
+  document.getElementById('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+  document.getElementById('pwInput').focus();
+}
+function tryLogin(){
+  if(document.getElementById('pwInput').value === ADMIN_PASS){
+    state.authed = true;
+    bootstrapAdmin();
+  } else {
+    document.getElementById('pwErr').style.display = 'block';
+    document.getElementById('pwInput').classList.add('err-border');
+    const s = document.getElementById('pwShake');
+    s.style.animation = 'shake .4s ease';
+    setTimeout(()=> s.style.animation = 'none', 500);
+  }
+}
+
+// ============================================================================
+//  BOOTSTRAP — fetch latest data, then render
+// ============================================================================
+async function bootstrapAdmin(){
+  app.innerHTML = `
+  <div style="max-width:420px;margin:80px auto 0;animation:fadeUp .4s ease both">
+    <div class="card" style="text-align:center;padding:40px 28px">
+      <div class="spinner" style="border-color:rgba(59,130,246,.3);border-top-color:var(--accent);width:32px;height:32px;display:inline-block;margin-bottom:14px"></div>
+      <p style="color:var(--muted);font-size:14px;margin:0">Loading store directory from GitHub…</p>
+    </div>
+  </div>`;
+  try {
+    const result = await fetchDirectoryFromGitHub();
+    state.data = result.data;
+    state.sha = result.sha;
+    state.updatedAt = result.updatedAt;
+    state.loaded = true;
+    state.dirty = !!result.firstTime; // mark dirty if seeded from defaults so user is nudged to save
+    renderAdmin();
+    if(result.firstTime) showToast('No directory file found — seeded with defaults. Click Save to commit.','info');
+  } catch (err) {
+    console.error(err);
+    app.innerHTML = `
+    <div style="max-width:420px;margin:80px auto 0">
+      <div class="card" style="text-align:center;padding:32px 28px">
+        <div style="font-size:38px;margin-bottom:10px">⚠️</div>
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px">Could not load directory</h2>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 20px">${err.message || 'Unknown error'}</p>
+        <button class="btn-primary" onclick="bootstrapAdmin()">Try again</button>
+        <button onclick="openTokenModal()" style="margin-top:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
+      </div>
+    </div>`;
+  }
+}
+
+// ============================================================================
+//  ADMIN SCREEN
+// ============================================================================
+function renderAdmin(){
+  const tabs = [
+    { key:'stores',   icon:'🏪', label:'Stores',   count: state.data.stores.length },
+    { key:'managers', icon:'👤', label:'Managers', count: state.data.managers.length },
+    { key:'dms',      icon:'📋', label:'DMs',      count: state.data.dms.length }
+  ];
+  const adminTab = state.adminTab;
+  const isStores = adminTab === 'stores';
+  const current = state.data[adminTab];
+  const placeholder = isStores ? 'e.g. Springfield Xfinity Store' : 'e.g. jsmith@blufoxmobile.com';
+  const labelText = isStores ? 'Store Location' : adminTab === 'managers' ? 'Manager Email' : 'DM Email';
+  const subtitle = isStores
+    ? "Set each store's Manager and DM email. The credit form auto-routes approvals to these emails."
+    : adminTab === 'managers'
+      ? 'Manager email options used by the per-store dropdowns.'
+      : 'District Manager email options used by the per-store dropdowns.';
+  const fallbackNote = `— Not assigned (uses ${FALLBACK_EMAIL}) —`;
+
+  const buildMappingRow = (item, i) => {
+    if(state.editIdx === i){
+      return `<div class="list-item" style="padding:14px 18px"><div style="display:flex;gap:6px;flex:1"><input class="inp" id="editInput" value="${escapeAttr(state.editVal)}" style="flex:1;padding:7px 10px;font-size:13px"><button onclick="saveEdit()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600">Save</button><button onclick="cancelEdit()" style="background:transparent;color:var(--muted);border:1px solid var(--inpb);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">✕</button></div></div>`;
+    }
+    const mgr = state.data.storeManagers[item] || '';
+    const dm  = state.data.storeDMs[item] || '';
+    const mgrOpts = `<option value="">${fallbackNote}</option>` + state.data.managers.map(m => `<option value="${escapeAttr(m)}"${m===mgr?' selected':''}>${escapeHtml(m)}</option>`).join('');
+    const dmOpts  = `<option value="">${fallbackNote}</option>` + state.data.dms.map(d => `<option value="${escapeAttr(d)}"${d===dm?' selected':''}>${escapeHtml(d)}</option>`).join('');
+    const mappedBadge = (mgr || dm)
+      ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
+      : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
+    return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word">${escapeHtml(item)}</span>
+          ${mappedBadge}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="icon-btn" style="color:var(--accent);font-size:13px" onclick="startEdit(${i})" title="Rename store">✏️</button>
+          <button class="icon-btn" style="color:var(--red);font-size:15px" onclick="removeItem(${i})" title="Remove store">✕</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:70px 1fr;gap:8px 10px;align-items:center;font-size:12px">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Manager</span>
+        <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'manager',this.value)">${mgrOpts}</select>
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM</span>
+        <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'dm',this.value)">${dmOpts}</select>
+      </div>
+    </div>`;
+  };
+  const buildFlatRow = (item, i) => {
+    if(state.editIdx === i){
+      return `<div class="list-item"><div style="display:flex;gap:6px;flex:1"><input class="inp" id="editInput" value="${escapeAttr(state.editVal)}" style="flex:1;padding:7px 10px;font-size:13px"><button onclick="saveEdit()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600">Save</button><button onclick="cancelEdit()" style="background:transparent;color:var(--muted);border:1px solid var(--inpb);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">✕</button></div></div>`;
+    }
+    return `<div class="list-item">
+      <span style="font-size:14px;color:var(--text);word-break:break-all;flex:1">${escapeHtml(item)}</span>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="icon-btn" style="color:var(--accent);font-size:13px" onclick="startEdit(${i})" title="Edit">✏️</button>
+        <button class="icon-btn" style="color:var(--red);font-size:15px" onclick="removeItem(${i})" title="Remove">✕</button>
+      </div>
+    </div>`;
+  };
+
+  const statusPill = state.saving
+    ? `<span class="status-pill"><span class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff;width:10px;height:10px"></span> Saving…</span>`
+    : state.dirty
+      ? `<span class="status-pill dirty"><span class="status-dot"></span> Unsaved changes</span>`
+      : `<span class="status-pill saved"><span class="status-dot"></span> Saved${state.updatedAt ? ' · ' + formatUpdatedAt(state.updatedAt) : ''}</span>`;
+
+  app.innerHTML = `
+  <div style="animation:fadeUp .4s ease both">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="logo-svg">SD</div>
+        <div>
+          <h1 style="font-size:22px;font-weight:700;margin:0">Store Directory Admin</h1>
+          <p style="font-size:12px;color:var(--muted);margin:2px 0 0">${subtitle}</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${statusPill}
+        <button onclick="openTokenModal()" class="btn-secondary" style="padding:8px 12px;font-size:12px">🔑</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:18px">${
+      tabs.map(t => `<button class="tab-btn ${state.adminTab===t.key?'active':''}" onclick="switchTab('${t.key}')"><span>${t.icon}</span> ${t.label}<span class="badge" style="background:${state.adminTab===t.key?'var(--accent)':'var(--inpb)'}">${t.count}</span></button>`).join('')
+    }</div>
+
+    <div class="card" style="padding:18px;margin-bottom:14px">
+      <label class="lbl" style="margin-bottom:6px">Add New ${labelText}</label>
+      <div style="display:flex;gap:8px">
+        <input class="inp" id="newItem" placeholder="${placeholder}" style="flex:1">
+        <button onclick="addItem()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">+ Add</button>
+      </div>
+      ${isStores ? `<p class="hint" style="margin-top:8px">After adding, set the Manager and DM in the row below. Stores without a mapping default to ${FALLBACK_EMAIL}.</p>` : ''}
+    </div>
+
+    <div class="card" style="padding:6px 0;max-height:520px;overflow-y:auto" id="itemList">
+      ${current.length === 0 ? '<p style="color:var(--muted);font-size:14px;text-align:center;padding:24px">No items. Add one above.</p>' : ''}
+      ${current.map((item, i) => isStores ? buildMappingRow(item, i) : buildFlatRow(item, i)).join('')}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" id="saveBtn" onclick="saveToGitHub()" ${state.dirty ? '' : 'disabled'} style="flex:1;min-width:200px">${state.dirty ? '💾 Save to GitHub' : '✓ All changes saved'}</button>
+      <button class="btn-secondary" onclick="reloadFromGitHub()" title="Reload from GitHub (discards unsaved changes)">↻ Reload</button>
+    </div>
+  </div>`;
+
+  document.getElementById('newItem')?.addEventListener('keydown', e => { if(e.key==='Enter') addItem(); });
+  document.getElementById('editInput')?.addEventListener('keydown', e => {
+    if(e.key==='Enter') saveEdit();
+    if(e.key==='Escape') cancelEdit();
+  });
+  document.getElementById('editInput')?.focus();
+}
+
+// ============================================================================
+//  ADMIN ACTIONS
+// ============================================================================
+function switchTab(key){
+  state.adminTab = key;
+  state.editIdx = null;
+  renderAdmin();
+}
+function addItem(){
+  const v = document.getElementById('newItem').value.trim();
+  if(!v || state.data[state.adminTab].includes(v)) return;
+  state.data[state.adminTab].push(v);
+  state.data[state.adminTab].sort((a, b) => a.localeCompare(b));
+  state.dirty = true;
+  renderAdmin();
+}
+function removeItem(i){
+  const tab = state.adminTab;
+  if(tab === 'stores'){
+    const n = state.data.stores[i];
+    delete state.data.storeManagers[n];
+    delete state.data.storeDMs[n];
+  }
+  state.data[tab].splice(i, 1);
+  state.dirty = true;
+  renderAdmin();
+}
+function startEdit(i){
+  state.editIdx = i;
+  state.editVal = state.data[state.adminTab][i];
+  renderAdmin();
+}
+function cancelEdit(){
+  state.editIdx = null;
+  renderAdmin();
+}
+function saveEdit(){
+  const v = document.getElementById('editInput').value.trim();
+  if(v){
+    const tab = state.adminTab;
+    if(tab === 'stores'){
+      const o = state.data.stores[state.editIdx];
+      if(o !== v){
+        if(state.data.storeManagers[o] !== undefined){
+          state.data.storeManagers[v] = state.data.storeManagers[o];
+          delete state.data.storeManagers[o];
+        }
+        if(state.data.storeDMs[o] !== undefined){
+          state.data.storeDMs[v] = state.data.storeDMs[o];
+          delete state.data.storeDMs[o];
+        }
+      }
+    }
+    state.data[tab][state.editIdx] = v;
+    state.dirty = true;
+  }
+  state.editIdx = null;
+  renderAdmin();
+}
+function updateStoreMapping(i, t, v){
+  const n = state.data.stores[i];
+  if(t === 'manager'){
+    if(v) state.data.storeManagers[n] = v;
+    else  delete state.data.storeManagers[n];
+  } else {
+    if(v) state.data.storeDMs[n] = v;
+    else  delete state.data.storeDMs[n];
+  }
+  state.dirty = true;
+  // No full re-render needed — just refresh the status pill / save button
+  renderAdmin();
+}
+
+async function saveToGitHub(){
+  if(state.saving || !state.dirty) return;
+  state.saving = true;
+  renderAdmin();
+  try {
+    await pushDirectoryToGitHub();
+    state.dirty = false;
+    state.saving = false;
+    renderAdmin();
+    showToast('Saved to GitHub ✓','success');
+  } catch (err) {
+    console.error(err);
+    state.saving = false;
+    renderAdmin();
+    showToast('Save failed: ' + (err.message || 'unknown'),'error');
+  }
+}
+
+async function reloadFromGitHub(){
+  if(state.dirty && !confirm('You have unsaved changes. Reload anyway?')) return;
+  state.editIdx = null;
+  bootstrapAdmin();
+}
+
+// ============================================================================
+//  HELPERS
+// ============================================================================
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s){ return escapeHtml(s); }
+function formatUpdatedAt(iso){
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  } catch(_) { return ''; }
+}
+
+// ============================================================================
+//  INIT
+// ============================================================================
+renderLogin();
+</script>
+</body>
+</html>
