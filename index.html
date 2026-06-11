@@ -16,8 +16,6 @@ input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--inpb);border-radius:3px}
 .lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
 .inp{width:100%;padding:11px 14px;font-size:15px;color:var(--text);background:var(--inp);border:1.5px solid var(--inpb);border-radius:8px;outline:none;transition:border-color .2s,box-shadow .2s}
-.sel{appearance:none;width:100%;padding:11px 14px;padding-right:36px;font-size:15px;color:var(--text);background:var(--inp) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'><path d='M7 10l5 5 5-5z'/></svg>") no-repeat right 10px center;background-size:18px;border:1.5px solid var(--inpb);border-radius:8px;cursor:pointer;outline:none}
-.sel.placeholder{color:var(--muted)}
 .err-border{border-color:var(--red)!important}
 .hint{font-size:11px;color:var(--muted);margin:4px 0 0}
 .btn-primary{padding:12px 22px;font-size:14px;font-weight:700;letter-spacing:.02em;color:#fff;background:linear-gradient(135deg,var(--accent),#2563eb);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 20px var(--glow);transition:transform .15s,box-shadow .2s}
@@ -25,9 +23,6 @@ input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3
 .btn-primary:disabled{background:var(--inpb);box-shadow:none;cursor:not-allowed;transform:none}
 .btn-secondary{padding:12px 22px;font-size:14px;font-weight:700;color:var(--text);background:transparent;border:1.5px solid var(--inpb);border-radius:10px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,.35)}
-.tab-btn{flex:1;padding:12px 10px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
-.tab-btn.active{color:#fff;background:linear-gradient(135deg,#1e3a5f,#1e293b);border:1.5px solid var(--accent)}
-.tab-btn:not(.active){color:var(--muted);background:var(--card);border:1.5px solid var(--border)}
 .badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;min-width:20px;text-align:center;color:#fff}
 .list-item{display:flex;align-items:center;gap:10px;padding:10px 18px}
 .list-item:not(:last-child){border-bottom:1px solid var(--border)}
@@ -88,10 +83,12 @@ const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
 
 // ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
 const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
-const DEFAULT_MANAGERS = ["sOrozco@blufoxmobile.com","ZSalazar@blufoxmobile.com","fSalazar@blufoxmobile.com","ZMitchell@blufoxmobile.com","GWilliams@blufoxmobile.com","juCarrillo@blufoxmobile.com","tChowdhury@blufoxmobile.com","jTrentham@blufoxmobile.com","ABell@blufoxmobile.com","vHuerto@blufoxmobile.com","maRodriguez@blufoxmobile.com","CCrooks@blufoxmobile.com","zSpradling@blufoxmobile.com","ISolis@blufoxmobile.com","miJackson@blufoxmobile.com","dRegan@blufoxmobile.com","kKirkland@blufoxmobile.com","IDhorajiwala@blufoxmobile.com","OsGarcia@blufoxmobile.com","HDodge@blufoxmobile.com","EWashington@blufoxmobile.com"];
-const DEFAULT_DMS = ["jcabrales@blufoxmobile.com","IDhorajiwala@blufoxmobile.com","mbrooks@blufoxmobile.com","juCarrillo@blufoxmobile.com","jbilbrey@blufoxmobile.com"];
 
 // ---- Embedded GitHub token (XOR-encoded, same scheme as crm.html) ----
+// If you need to update the token, edit _TOKEN_ENCODED in BOTH crm.html and this file
+// using the same _TOKEN_KEY ("blufox"). The encoder snippet is:
+//   const t='YOUR_TOKEN'; const k='blufox';
+//   JSON.stringify([...t].map((c,i)=>c.charCodeAt(0)^k.charCodeAt(i%k.length)))
 const _TOKEN_ENCODED = [5,5,1,14,26,26,61,28,20,18,48,73,83,47,52,46,45,76,85,61,69,14,93,0,51,59,66,53,90,48,53,35,22,57,32,10,17,88,71,86,1,46,16,58,3,15,29,32,59,26,1,50,34,21,17,5,48,55,31,11,49,10,61,62,45,8,49,30,58,21,43,8,27,57,24,28,31,34,42,63,58,85,46,63,39,4,23,52,89,57,48,15,63];
 const _TOKEN_KEY = 'blufox';
 const EMBEDDED_TOKEN = _TOKEN_ENCODED.map((c,i)=>String.fromCharCode(c ^ _TOKEN_KEY.charCodeAt(i % _TOKEN_KEY.length))).join('');
@@ -106,24 +103,29 @@ const state = {
   dirty: false,
   sha: null,
   updatedAt: null,
+  // Any keys in the data file this page doesn't manage (e.g. storeAddresses)
+  // are kept here untouched and written back on save.
+  extras: {},
   data: {
     stores: [],
     managers: [],
     dms: [],
     storeManagers: {},
+    storeAMs: {},
     storeDMs: {},
-    storeManagerNames: {},
-    storeAddresses: {}
+    storeManagerNames: {}
   },
-  adminTab: 'stores',
   editIdx: null,
   editVal: ''
 };
 
+// Keys this page owns. Everything else in the JSON passes through untouched.
+const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames'];
+
 const app = document.getElementById('app');
 
 // ============================================================================
-//  TOKEN HANDLING
+//  TOKEN HANDLING (embedded with localStorage override)
 // ============================================================================
 function getToken(){
   const override = localStorage.getItem('blufox_github_token');
@@ -165,16 +167,18 @@ async function fetchDirectoryFromGitHub(){
   if(token) headers['Authorization'] = `Bearer ${token}`;
   const resp = await fetch(url, { headers });
   if(resp.status === 404){
+    // File doesn't exist yet — seed with defaults
     return {
       data: {
         stores: [...DEFAULT_STORES],
-        managers: [...DEFAULT_MANAGERS],
-        dms: [...DEFAULT_DMS],
+        managers: [],
+        dms: [],
         storeManagers: {},
+        storeAMs: {},
         storeDMs: {},
-        storeManagerNames: {},
-        storeAddresses: {}
+        storeManagerNames: {}
       },
+      extras: {},
       sha: null,
       updatedAt: null,
       firstTime: true
@@ -184,16 +188,19 @@ async function fetchDirectoryFromGitHub(){
   const meta = await resp.json();
   const decoded = atob(meta.content.replace(/\n/g,''));
   const json = JSON.parse(decoded);
+  const extras = {};
+  Object.keys(json).forEach(k => { if(!MANAGED_KEYS.includes(k)) extras[k] = json[k]; });
   return {
     data: {
       stores: Array.isArray(json.stores) ? json.stores : [],
       managers: Array.isArray(json.managers) ? json.managers : [],
       dms: Array.isArray(json.dms) ? json.dms : [],
       storeManagers: (json.storeManagers && typeof json.storeManagers === 'object') ? json.storeManagers : {},
+      storeAMs: (json.storeAMs && typeof json.storeAMs === 'object') ? json.storeAMs : {},
       storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
-      storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {},
-      storeAddresses: (json.storeAddresses && typeof json.storeAddresses === 'object') ? json.storeAddresses : {}
+      storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {}
     },
+    extras,
     sha: meta.sha,
     updatedAt: json.updatedAt || null,
     firstTime: false
@@ -203,20 +210,25 @@ async function fetchDirectoryFromGitHub(){
 async function pushDirectoryToGitHub(){
   const token = getToken();
   if(!token){ showToast('GitHub token unavailable','error'); return false; }
+  // Refetch just before write to minimize conflict on concurrent edits,
+  // and to pick up any unmanaged keys added by other tools.
   let currentSha = state.sha;
+  let extras = state.extras;
   try {
     const fresh = await fetchDirectoryFromGitHub();
     currentSha = fresh.sha;
-  } catch(_) { /* fall through with cached sha */ }
+    extras = fresh.extras;
+  } catch(_) { /* fall through with cached values */ }
   const payload = {
+    ...extras,
     updatedAt: new Date().toISOString(),
     stores: state.data.stores,
     managers: state.data.managers,
     dms: state.data.dms,
     storeManagers: state.data.storeManagers,
+    storeAMs: state.data.storeAMs,
     storeDMs: state.data.storeDMs,
-    storeManagerNames: state.data.storeManagerNames,
-    storeAddresses: state.data.storeAddresses
+    storeManagerNames: state.data.storeManagerNames
   };
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
   const body = {
@@ -240,6 +252,7 @@ async function pushDirectoryToGitHub(){
   }
   const data = await resp.json();
   state.sha = data.content.sha;
+  state.extras = extras;
   state.updatedAt = payload.updatedAt;
   return true;
 }
@@ -279,7 +292,7 @@ function tryLogin(){
 }
 
 // ============================================================================
-//  BOOTSTRAP
+//  BOOTSTRAP — fetch latest data, then render
 // ============================================================================
 async function bootstrapAdmin(){
   app.innerHTML = `
@@ -292,10 +305,11 @@ async function bootstrapAdmin(){
   try {
     const result = await fetchDirectoryFromGitHub();
     state.data = result.data;
+    state.extras = result.extras;
     state.sha = result.sha;
     state.updatedAt = result.updatedAt;
     state.loaded = true;
-    state.dirty = !!result.firstTime;
+    state.dirty = !!result.firstTime; // mark dirty if seeded from defaults so user is nudged to save
     renderAdmin();
     if(result.firstTime) showToast('No directory file found — seeded with defaults. Click Save to commit.','info');
   } catch (err) {
@@ -317,34 +331,18 @@ async function bootstrapAdmin(){
 //  ADMIN SCREEN
 // ============================================================================
 function renderAdmin(){
-  const tabs = [
-    { key:'stores',   icon:'🏪', label:'Stores',   count: state.data.stores.length },
-    { key:'managers', icon:'👤', label:'Managers', count: state.data.managers.length },
-    { key:'dms',      icon:'📋', label:'DMs',      count: state.data.dms.length }
-  ];
-  const adminTab = state.adminTab;
-  const isStores = adminTab === 'stores';
-  const current = state.data[adminTab];
-  const placeholder = isStores ? 'e.g. Springfield Xfinity Store' : 'e.g. jsmith@blufoxmobile.com';
-  const labelText = isStores ? 'Store Location' : adminTab === 'managers' ? 'Manager Email' : 'DM Email';
-  const subtitle = isStores
-    ? "Set each store's address, Manager name, Manager email, and DM email. These values feed the credit form and the New Hire onboarding form."
-    : adminTab === 'managers'
-      ? 'Manager email options used by the per-store dropdowns.'
-      : 'District Manager email options used by the per-store dropdowns.';
-  const fallbackNote = `— Not assigned (uses ${FALLBACK_EMAIL}) —`;
+  const stores = state.data.stores;
+  const subtitle = "Type each store's Manager name, Manager email, Assistant Manager email, and DM email. These values feed the credit form and the New Hire onboarding form.";
 
   const buildMappingRow = (item, i) => {
     if(state.editIdx === i){
       return `<div class="list-item" style="padding:14px 18px"><div style="display:flex;gap:6px;flex:1"><input class="inp" id="editInput" value="${escapeAttr(state.editVal)}" style="flex:1;padding:7px 10px;font-size:13px"><button onclick="saveEdit()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600">Save</button><button onclick="cancelEdit()" style="background:transparent;color:var(--muted);border:1px solid var(--inpb);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">✕</button></div></div>`;
     }
     const mgr = state.data.storeManagers[item] || '';
+    const am  = state.data.storeAMs[item] || '';
     const dm  = state.data.storeDMs[item] || '';
     const mgrName = state.data.storeManagerNames[item] || '';
-    const address = state.data.storeAddresses[item] || '';
-    const mgrOpts = `<option value="">${fallbackNote}</option>` + state.data.managers.map(m => `<option value="${escapeAttr(m)}"${m===mgr?' selected':''}>${escapeHtml(m)}</option>`).join('');
-    const dmOpts  = `<option value="">${fallbackNote}</option>` + state.data.dms.map(d => `<option value="${escapeAttr(d)}"${d===dm?' selected':''}>${escapeHtml(d)}</option>`).join('');
-    const mappedBadge = (mgr || dm || mgrName || address)
+    const mappedBadge = (mgr || dm || mgrName || am)
       ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
       : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
@@ -359,26 +357,14 @@ function renderAdmin(){
         </div>
       </div>
       <div style="display:grid;grid-template-columns:85px 1fr;gap:8px 10px;align-items:center;font-size:12px">
-        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Address</span>
-        <input class="inp" type="text" placeholder="e.g. 123 Main St, Chicago, IL 60601" value="${escapeAttr(address)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreAddress(${i}, this.value)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Mgr Name</span>
-        <input class="inp" type="text" placeholder="e.g. Jane Smith" value="${escapeAttr(mgrName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreManagerName(${i}, this.value)">
+        <input class="inp" type="text" placeholder="e.g. Jane Smith" value="${escapeAttr(mgrName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeManagerNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Mgr Email</span>
-        <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'manager',this.value)">${mgrOpts}</select>
+        <input class="inp" type="email" placeholder="e.g. jsmith@blufoxmobile.com" value="${escapeAttr(mgr)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeManagers',this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">AM Email</span>
+        <input class="inp" type="email" placeholder="e.g. asmith@blufoxmobile.com" value="${escapeAttr(am)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMs',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
-        <select class="sel" style="padding:8px 10px;font-size:13px" onchange="updateStoreMapping(${i},'dm',this.value)">${dmOpts}</select>
-      </div>
-    </div>`;
-  };
-  const buildFlatRow = (item, i) => {
-    if(state.editIdx === i){
-      return `<div class="list-item"><div style="display:flex;gap:6px;flex:1"><input class="inp" id="editInput" value="${escapeAttr(state.editVal)}" style="flex:1;padding:7px 10px;font-size:13px"><button onclick="saveEdit()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600">Save</button><button onclick="cancelEdit()" style="background:transparent;color:var(--muted);border:1px solid var(--inpb);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">✕</button></div></div>`;
-    }
-    return `<div class="list-item">
-      <span style="font-size:14px;color:var(--text);word-break:break-all;flex:1">${escapeHtml(item)}</span>
-      <div style="display:flex;gap:4px;flex-shrink:0">
-        <button class="icon-btn" style="color:var(--accent);font-size:13px" onclick="startEdit(${i})" title="Edit">✏️</button>
-        <button class="icon-btn" style="color:var(--red);font-size:15px" onclick="removeItem(${i})" title="Remove">✕</button>
+        <input class="inp" type="email" placeholder="e.g. dsmith@blufoxmobile.com" value="${escapeAttr(dm)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeDMs',this)">
       </div>
     </div>`;
   };
@@ -395,7 +381,7 @@ function renderAdmin(){
       <div style="display:flex;align-items:center;gap:12px">
         <div class="logo-svg">SD</div>
         <div>
-          <h1 style="font-size:22px;font-weight:700;margin:0">Store Directory Admin</h1>
+          <h1 style="font-size:22px;font-weight:700;margin:0">Store Directory Admin <span class="badge" style="background:var(--accent);vertical-align:middle">${stores.length}</span></h1>
           <p style="font-size:12px;color:var(--muted);margin:2px 0 0">${subtitle}</p>
         </div>
       </div>
@@ -405,22 +391,18 @@ function renderAdmin(){
       </div>
     </div>
 
-    <div style="display:flex;gap:6px;margin-bottom:18px">${
-      tabs.map(t => `<button class="tab-btn ${state.adminTab===t.key?'active':''}" onclick="switchTab('${t.key}')"><span>${t.icon}</span> ${t.label}<span class="badge" style="background:${state.adminTab===t.key?'var(--accent)':'var(--inpb)'}">${t.count}</span></button>`).join('')
-    }</div>
-
     <div class="card" style="padding:18px;margin-bottom:14px">
-      <label class="lbl" style="margin-bottom:6px">Add New ${labelText}</label>
+      <label class="lbl" style="margin-bottom:6px">Add New Store Location</label>
       <div style="display:flex;gap:8px">
-        <input class="inp" id="newItem" placeholder="${placeholder}" style="flex:1">
+        <input class="inp" id="newItem" placeholder="e.g. Springfield Xfinity Store" style="flex:1">
         <button onclick="addItem()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">+ Add</button>
       </div>
-      ${isStores ? `<p class="hint" style="margin-top:8px">After adding, set the Address, Manager, and DM in the row below. Stores without a mapping default to ${FALLBACK_EMAIL}.</p>` : ''}
+      <p class="hint" style="margin-top:8px">After adding, type the Manager, AM, and DM emails in the row below. Stores without a mapping default to ${FALLBACK_EMAIL}.</p>
     </div>
 
     <div class="card" style="padding:6px 0;max-height:520px;overflow-y:auto" id="itemList">
-      ${current.length === 0 ? '<p style="color:var(--muted);font-size:14px;text-align:center;padding:24px">No items. Add one above.</p>' : ''}
-      ${current.map((item, i) => isStores ? buildMappingRow(item, i) : buildFlatRow(item, i)).join('')}
+      ${stores.length === 0 ? '<p style="color:var(--muted);font-size:14px;text-align:center;padding:24px">No stores. Add one above.</p>' : ''}
+      ${stores.map((item, i) => buildMappingRow(item, i)).join('')}
     </div>
 
     <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
@@ -440,35 +422,28 @@ function renderAdmin(){
 // ============================================================================
 //  ADMIN ACTIONS
 // ============================================================================
-function switchTab(key){
-  state.adminTab = key;
-  state.editIdx = null;
-  renderAdmin();
-}
 function addItem(){
   const v = document.getElementById('newItem').value.trim();
-  if(!v || state.data[state.adminTab].includes(v)) return;
-  state.data[state.adminTab].push(v);
-  state.data[state.adminTab].sort((a, b) => a.localeCompare(b));
+  if(!v || state.data.stores.includes(v)) return;
+  state.data.stores.push(v);
+  state.data.stores.sort((a, b) => a.localeCompare(b));
   state.dirty = true;
   renderAdmin();
 }
 function removeItem(i){
-  const tab = state.adminTab;
-  if(tab === 'stores'){
-    const n = state.data.stores[i];
-    delete state.data.storeManagers[n];
-    delete state.data.storeDMs[n];
-    delete state.data.storeManagerNames[n];
-    delete state.data.storeAddresses[n];
-  }
-  state.data[tab].splice(i, 1);
+  const n = state.data.stores[i];
+  if(!confirm(`Remove "${n}" and its assignments?`)) return;
+  delete state.data.storeManagers[n];
+  delete state.data.storeAMs[n];
+  delete state.data.storeDMs[n];
+  delete state.data.storeManagerNames[n];
+  state.data.stores.splice(i, 1);
   state.dirty = true;
   renderAdmin();
 }
 function startEdit(i){
   state.editIdx = i;
-  state.editVal = state.data[state.adminTab][i];
+  state.editVal = state.data.stores[i];
   renderAdmin();
 }
 function cancelEdit(){
@@ -478,59 +453,33 @@ function cancelEdit(){
 function saveEdit(){
   const v = document.getElementById('editInput').value.trim();
   if(v){
-    const tab = state.adminTab;
-    if(tab === 'stores'){
-      const o = state.data.stores[state.editIdx];
-      if(o !== v){
-        if(state.data.storeManagers[o] !== undefined){
-          state.data.storeManagers[v] = state.data.storeManagers[o];
-          delete state.data.storeManagers[o];
+    const o = state.data.stores[state.editIdx];
+    if(o !== v){
+      ['storeManagers','storeAMs','storeDMs','storeManagerNames'].forEach(key => {
+        if(state.data[key][o] !== undefined){
+          state.data[key][v] = state.data[key][o];
+          delete state.data[key][o];
         }
-        if(state.data.storeDMs[o] !== undefined){
-          state.data.storeDMs[v] = state.data.storeDMs[o];
-          delete state.data.storeDMs[o];
-        }
-        if(state.data.storeManagerNames[o] !== undefined){
-          state.data.storeManagerNames[v] = state.data.storeManagerNames[o];
-          delete state.data.storeManagerNames[o];
-        }
-        if(state.data.storeAddresses[o] !== undefined){
-          state.data.storeAddresses[v] = state.data.storeAddresses[o];
-          delete state.data.storeAddresses[o];
-        }
-      }
+      });
     }
-    state.data[tab][state.editIdx] = v;
+    state.data.stores[state.editIdx] = v;
     state.dirty = true;
   }
   state.editIdx = null;
   renderAdmin();
 }
-function updateStoreAddress(i, v){
+function updateStoreField(i, key, inputEl){
   const n = state.data.stores[i];
-  const trimmed = (v || '').trim();
-  if(trimmed) state.data.storeAddresses[n] = trimmed;
-  else delete state.data.storeAddresses[n];
-  state.dirty = true;
-  renderAdmin();
-}
-function updateStoreMapping(i, t, v){
-  const n = state.data.stores[i];
-  if(t === 'manager'){
-    if(v) state.data.storeManagers[n] = v;
-    else  delete state.data.storeManagers[n];
-  } else {
-    if(v) state.data.storeDMs[n] = v;
-    else  delete state.data.storeDMs[n];
+  const v = (inputEl.value || '').trim();
+  const isEmailField = key !== 'storeManagerNames';
+  if(v && isEmailField && (!v.includes('@') || !v.includes('.'))){
+    inputEl.classList.add('err-border');
+    showToast('That doesn\'t look like a valid email address','error');
+    return; // don't store an obviously broken email
   }
-  state.dirty = true;
-  renderAdmin();
-}
-function updateStoreManagerName(i, v){
-  const n = state.data.stores[i];
-  const trimmed = (v || '').trim();
-  if(trimmed) state.data.storeManagerNames[n] = trimmed;
-  else delete state.data.storeManagerNames[n];
+  inputEl.classList.remove('err-border');
+  if(v) state.data[key][n] = v;
+  else delete state.data[key][n];
   state.dirty = true;
   renderAdmin();
 }
