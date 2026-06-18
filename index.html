@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Store Directory Admin — Blufox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -47,6 +48,14 @@ input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3
 .status-pill.dirty{color:var(--warn);background:rgba(251,191,36,.12)}
 .status-pill.saved{color:var(--green);background:rgba(34,197,94,.12)}
 .status-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+/* ---- Tab bar (added for Employee Emails tab) ---- */
+.tabbar{display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.tabbtn{background:none;border:none;color:var(--muted);font-family:inherit;font-size:14px;font-weight:700;padding:11px 18px;cursor:pointer;border-bottom:3px solid transparent;letter-spacing:.02em}
+.tabbtn:hover{color:var(--text)}
+.tabbtn.active{color:var(--text);border-bottom-color:var(--accent)}
+.email-chip{display:inline-flex;align-items:center;gap:6px;background:var(--inp);border:1px solid var(--inpb);border-radius:20px;padding:5px 10px 5px 12px;font-size:12px;color:var(--text);margin:3px}
+.email-chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0 2px}
+.email-chip button:hover{color:var(--red)}
 </style>
 </head>
 <body>
@@ -84,6 +93,42 @@ const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
 // ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
 const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
 
+// ---- Store-number crosswalk: directory store name -> BluFox roster "Store Number" ----
+// Used by the Employee Emails tab to match roster rows to the directory stores.
+// Verified 6-18-2026 against "BluFox Active Roster" (manager emails cross-checked).
+// To add a store: put its directory name and roster Store Number here.
+const STORE_CROSSWALK = {
+  "Bourbonnais Xfinity Store": "55027",
+  "Burbank Xfinity Store": "51032",
+  "Calumet City Xfinity Store": "51041",
+  "Cicero Xfinity Store": "55011",
+  "Dekalb Xfinity Store": "55003",
+  "Elkhart Xfinity Store": "55006",
+  "Evanston Xfinity Store": "55008",
+  "Evergreen Park Xfinity Store": "55010",
+  "Frankfort Xfinity Store": "55005",
+  "Glenview Xfinity Store": "55004",
+  "Greeneville Xfinity Store": "51011",
+  "Hammond Xfinity Store": "51017",
+  "Johnson City Xfinity Store": "51031",
+  "Kildeer Xfinity Store": "55001",
+  "Michigan City Xfinity Store": "51033",
+  "Oak Ridge Xfinity Store": "51009",
+  "Round Lake Beach Xfinity Store": "51023",
+  "Schererville Xfinity Store": "51026",
+  "South Bend Xfinity Store": "51035",
+  "South Knoxville Xfinity Store": "51022",
+  "South Skokie Xfinity Store": "51025",
+  "Skokie Xfinity Store": "51025",
+  "Tinley Park Xfinity Store": "55002",
+  "Uptown Xfinity Store": "55009",
+  "Valparaiso Xfinity Store": "55000"
+};
+
+// Roster roles that are MANAGERS (handled by the Stores & Managers tab) — excluded
+// from the rep list. Everything else with an email counts as a rep.
+const MANAGER_ROLES = new Set(["store manager","assistant store manager","district manager"]);
+
 // ---- Embedded GitHub token (XOR-encoded, same scheme as crm.html) ----
 // If you need to update the token, edit _TOKEN_ENCODED in BOTH crm.html and this file
 // using the same _TOKEN_KEY ("blufox"). The encoder snippet is:
@@ -103,6 +148,8 @@ const state = {
   dirty: false,
   sha: null,
   updatedAt: null,
+  tab: 'stores',            // 'stores' | 'employees'
+  lastUpload: null,         // { fileName, matchedStores, repCount, skipped:[{store,count}] }
   // Any keys in the data file this page doesn't manage (e.g. storeAddresses)
   // are kept here untouched and written back on save.
   extras: {},
@@ -113,14 +160,15 @@ const state = {
     storeManagers: {},
     storeAMs: {},
     storeDMs: {},
-    storeManagerNames: {}
+    storeManagerNames: {},
+    storeEmployees: {}
   },
   editIdx: null,
   editVal: ''
 };
 
 // Keys this page owns. Everything else in the JSON passes through untouched.
-const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames'];
+const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeEmployees'];
 
 const app = document.getElementById('app');
 
@@ -176,7 +224,8 @@ async function fetchDirectoryFromGitHub(){
         storeManagers: {},
         storeAMs: {},
         storeDMs: {},
-        storeManagerNames: {}
+        storeManagerNames: {},
+        storeEmployees: {}
       },
       extras: {},
       sha: null,
@@ -198,7 +247,8 @@ async function fetchDirectoryFromGitHub(){
       storeManagers: (json.storeManagers && typeof json.storeManagers === 'object') ? json.storeManagers : {},
       storeAMs: (json.storeAMs && typeof json.storeAMs === 'object') ? json.storeAMs : {},
       storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
-      storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {}
+      storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {},
+      storeEmployees: (json.storeEmployees && typeof json.storeEmployees === 'object') ? json.storeEmployees : {}
     },
     extras,
     sha: meta.sha,
@@ -228,7 +278,8 @@ async function pushDirectoryToGitHub(){
     storeManagers: state.data.storeManagers,
     storeAMs: state.data.storeAMs,
     storeDMs: state.data.storeDMs,
-    storeManagerNames: state.data.storeManagerNames
+    storeManagerNames: state.data.storeManagerNames,
+    storeEmployees: state.data.storeEmployees
   };
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
   const body = {
@@ -305,12 +356,13 @@ async function bootstrapAdmin(){
   try {
     const result = await fetchDirectoryFromGitHub();
     state.data = result.data;
+    if(!state.data.storeEmployees) state.data.storeEmployees = {};
     state.extras = result.extras;
     state.sha = result.sha;
     state.updatedAt = result.updatedAt;
     state.loaded = true;
     state.dirty = !!result.firstTime; // mark dirty if seeded from defaults so user is nudged to save
-    renderAdmin();
+    renderActive();
     if(result.firstTime) showToast('No directory file found — seeded with defaults. Click Save to commit.','info');
   } catch (err) {
     console.error(err);
@@ -328,7 +380,46 @@ async function bootstrapAdmin(){
 }
 
 // ============================================================================
-//  ADMIN SCREEN
+//  TAB DISPATCH
+// ============================================================================
+function switchTab(t){
+  state.tab = t;
+  state.editIdx = null;
+  renderActive();
+}
+function renderActive(){
+  if(state.tab === 'employees') renderEmployees();
+  else renderAdmin();
+}
+function tabBarHtml(){
+  return `<div class="tabbar">
+    <button class="tabbtn ${state.tab==='stores'?'active':''}" onclick="switchTab('stores')">Stores &amp; Managers</button>
+    <button class="tabbtn ${state.tab==='employees'?'active':''}" onclick="switchTab('employees')">Employee Emails (Reps)</button>
+  </div>`;
+}
+function headerHtml(title, sub, count){
+  const statusPill = state.saving
+    ? `<span class="status-pill"><span class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff;width:10px;height:10px"></span> Saving…</span>`
+    : state.dirty
+      ? `<span class="status-pill dirty"><span class="status-dot"></span> Unsaved changes</span>`
+      : `<span class="status-pill saved"><span class="status-dot"></span> Saved${state.updatedAt ? ' · ' + formatUpdatedAt(state.updatedAt) : ''}</span>`;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="logo-svg">SD</div>
+        <div>
+          <h1 style="font-size:22px;font-weight:700;margin:0">${title} <span class="badge" style="background:var(--accent);vertical-align:middle">${count}</span></h1>
+          <p style="font-size:12px;color:var(--muted);margin:2px 0 0">${sub}</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${statusPill}
+        <button onclick="openTokenModal()" class="btn-secondary" style="padding:8px 12px;font-size:12px">🔑</button>
+      </div>
+    </div>`;
+}
+
+// ============================================================================
+//  ADMIN SCREEN — TAB 1: Stores & Managers (unchanged behavior)
 // ============================================================================
 function renderAdmin(){
   const stores = state.data.stores;
@@ -369,27 +460,10 @@ function renderAdmin(){
     </div>`;
   };
 
-  const statusPill = state.saving
-    ? `<span class="status-pill"><span class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff;width:10px;height:10px"></span> Saving…</span>`
-    : state.dirty
-      ? `<span class="status-pill dirty"><span class="status-dot"></span> Unsaved changes</span>`
-      : `<span class="status-pill saved"><span class="status-dot"></span> Saved${state.updatedAt ? ' · ' + formatUpdatedAt(state.updatedAt) : ''}</span>`;
-
   app.innerHTML = `
   <div style="animation:fadeUp .4s ease both">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="logo-svg">SD</div>
-        <div>
-          <h1 style="font-size:22px;font-weight:700;margin:0">Store Directory Admin <span class="badge" style="background:var(--accent);vertical-align:middle">${stores.length}</span></h1>
-          <p style="font-size:12px;color:var(--muted);margin:2px 0 0">${subtitle}</p>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        ${statusPill}
-        <button onclick="openTokenModal()" class="btn-secondary" style="padding:8px 12px;font-size:12px">🔑</button>
-      </div>
-    </div>
+    ${tabBarHtml()}
+    ${headerHtml('Store Directory Admin', subtitle, stores.length)}
 
     <div class="card" style="padding:18px;margin-bottom:14px">
       <label class="lbl" style="margin-bottom:6px">Add New Store Location</label>
@@ -420,7 +494,189 @@ function renderAdmin(){
 }
 
 // ============================================================================
-//  ADMIN ACTIONS
+//  EMPLOYEES SCREEN — TAB 2: Employee Emails (Reps)
+// ============================================================================
+function renderEmployees(){
+  const stores = state.data.stores;
+  const emp = state.data.storeEmployees || {};
+  const totalReps = stores.reduce((n, s) => n + ((emp[s] || []).length), 0);
+  const subtitle = "Upload the BluFox Active Roster (.xlsx) to load every rep's email per store. Managers are handled on the other tab — this list is reps only. Saved to storeEmployees in store-directory.json.";
+
+  const lastUploadHtml = state.lastUpload ? `
+    <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--green)">
+      <div style="font-size:13px;color:var(--text);font-weight:600">Loaded <strong style="color:var(--green)">${state.lastUpload.repCount}</strong> reps across <strong style="color:var(--green)">${state.lastUpload.matchedStores}</strong> stores from <span style="color:var(--muted)">${escapeHtml(state.lastUpload.fileName)}</span></div>
+      ${state.lastUpload.skipped && state.lastUpload.skipped.length ? `<p class="hint" style="margin-top:8px">${state.lastUpload.skipped.length} roster location(s) not in this directory were skipped (e.g. ${escapeHtml(state.lastUpload.skipped.slice(0,3).map(x=>x.store).join(', '))}${state.lastUpload.skipped.length>3?'…':''}). That's expected — only the ${Object.keys(STORE_CROSSWALK).length} mapped stores are tracked here.</p>` : ''}
+      ${state.lastUpload.noMatch && state.lastUpload.noMatch.length ? `<p class="hint" style="margin-top:6px;color:var(--warn)">No roster match for: ${escapeHtml(state.lastUpload.noMatch.join(', '))}. Add a Store Number to STORE_CROSSWALK or enter reps manually below.</p>` : ''}
+    </div>` : '';
+
+  const buildEmpRow = (store, i) => {
+    const list = emp[store] || [];
+    const inCrosswalk = Object.prototype.hasOwnProperty.call(STORE_CROSSWALK, store);
+    const badge = list.length
+      ? `<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">${list.length} REP${list.length===1?'':'S'}</span>`
+      : (inCrosswalk
+          ? '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NO REPS YET</span>'
+          : '<span style="font-size:10px;font-weight:700;color:var(--orange);background:rgba(249,115,22,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NOT IN ROSTER MAP</span>');
+    const chips = list.map((e,j) => `<span class="email-chip">${escapeHtml(e)}<button title="Remove" onclick="removeEmp(${i},${j})">✕</button></span>`).join('');
+    return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word">${escapeHtml(store)}</span>
+        ${badge}
+      </div>
+      <div style="display:flex;flex-wrap:wrap">${chips || '<span style="font-size:12px;color:var(--muted);font-style:italic;padding:2px 4px">No rep emails. Upload the roster or add one below.</span>'}</div>
+      <div style="display:flex;gap:6px;margin-top:2px">
+        <input class="inp" type="email" placeholder="add rep email…" style="flex:1;padding:8px 10px;font-size:13px" onkeydown="if(event.key==='Enter'){addEmp(${i},this);}">
+        <button onclick="addEmp(${i},this.previousElementSibling)" style="padding:8px 14px;font-size:13px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">+ Add</button>
+      </div>
+    </div>`;
+  };
+
+  app.innerHTML = `
+  <div style="animation:fadeUp .4s ease both">
+    ${tabBarHtml()}
+    ${headerHtml('Employee Emails', subtitle, totalReps)}
+
+    <div class="card" style="padding:18px;margin-bottom:14px">
+      <label class="lbl" style="margin-bottom:6px">Upload Active Roster (.xlsx)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="file" id="rosterFile" accept=".xlsx,.xls" style="flex:1;min-width:220px;font-size:13px;color:var(--muted)">
+        <button id="parseBtn" onclick="handleRosterUpload()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">Load Reps</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Reads columns <strong>Store Number</strong>, <strong>Role</strong>, and <strong>Email</strong>. Matches each row to a store by Store Number, keeps non-manager roles, and <strong>replaces</strong> the rep list for every matched store.</p>
+    </div>
+
+    ${lastUploadHtml}
+
+    <div class="card" style="padding:6px 0;max-height:520px;overflow-y:auto">
+      ${stores.length === 0 ? '<p style="color:var(--muted);font-size:14px;text-align:center;padding:24px">No stores yet. Add stores on the Stores &amp; Managers tab.</p>' : ''}
+      ${stores.map((s,i) => buildEmpRow(s,i)).join('')}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" onclick="saveToGitHub()" ${state.dirty ? '' : 'disabled'} style="flex:1;min-width:200px">${state.dirty ? '💾 Save to GitHub' : '✓ All changes saved'}</button>
+      <button class="btn-secondary" onclick="reloadFromGitHub()" title="Reload from GitHub (discards unsaved changes)">↻ Reload</button>
+    </div>
+  </div>`;
+}
+
+// Parse the uploaded roster workbook and populate storeEmployees (reps only).
+function handleRosterUpload(){
+  const input = document.getElementById('rosterFile');
+  const file = input && input.files && input.files[0];
+  if(!file){ showToast('Choose a roster .xlsx file first','error'); return; }
+  const btn = document.getElementById('parseBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Reading…'; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      if(!ws) throw new Error('No sheet found in workbook');
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      if(!rows.length) throw new Error('Workbook is empty');
+
+      // Locate header row + the three columns we need (by name, case-insensitive).
+      let hr = -1, cStore = -1, cRole = -1, cEmail = -1;
+      for(let i = 0; i < Math.min(10, rows.length); i++){
+        const r = (rows[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
+        const si = r.findIndex(c => c === 'store number' || c === 'store #' || c === 'store number ');
+        const ri = r.findIndex(c => c === 'role');
+        const ei = r.findIndex(c => c === 'email');
+        if(si >= 0 && ei >= 0){ hr = i; cStore = si; cRole = ri; cEmail = ei; break; }
+      }
+      if(hr < 0) throw new Error('Could not find a header row with "Store Number" and "Email" columns. Is this the Active Roster export?');
+
+      // store number -> directory store name (first crosswalk match wins)
+      const num2store = {};
+      Object.keys(STORE_CROSSWALK).forEach(name => {
+        const num = String(STORE_CROSSWALK[name]);
+        if(!(num in num2store)) num2store[num] = name;
+      });
+
+      const byStore = {};                 // directory store -> Set(emails)
+      const skippedCount = {};            // roster store# (not mapped) -> count
+      let repRows = 0;
+      for(let i = hr + 1; i < rows.length; i++){
+        const r = rows[i];
+        if(!r) continue;
+        const rawNum = r[cStore] == null ? '' : String(r[cStore]).trim();
+        const email  = r[cEmail] == null ? '' : String(r[cEmail]).trim().toLowerCase();
+        const role   = (cRole >= 0 && r[cRole] != null) ? String(r[cRole]).trim().toLowerCase() : '';
+        if(!email || email.indexOf('@') < 0) continue;
+        if(MANAGER_ROLES.has(role)) continue;          // reps only — skip managers
+        const num = rawNum.match(/\d{4,6}/) ? rawNum.match(/\d{4,6}/)[0] : rawNum;
+        const storeName = num2store[num];
+        if(!storeName){ if(num) skippedCount[num] = (skippedCount[num]||0)+1; continue; }
+        (byStore[storeName] = byStore[storeName] || new Set()).add(email);
+        repRows++;
+      }
+
+      // Replace the rep list for every matched store; leave unmatched stores as-is.
+      let matchedStores = 0, repCount = 0;
+      Object.keys(byStore).forEach(store => {
+        const arr = Array.from(byStore[store]).sort();
+        state.data.storeEmployees[store] = arr;
+        matchedStores++; repCount += arr.length;
+      });
+
+      // Directory stores that ARE in the crosswalk but got zero rows this upload.
+      const noMatch = state.data.stores.filter(s =>
+        Object.prototype.hasOwnProperty.call(STORE_CROSSWALK, s) && !(state.data.storeEmployees[s] && state.data.storeEmployees[s].length)
+      );
+
+      state.lastUpload = {
+        fileName: file.name,
+        matchedStores,
+        repCount,
+        skipped: Object.keys(skippedCount).map(n => ({ store: n, count: skippedCount[n] })),
+        noMatch
+      };
+      state.dirty = true;
+      renderEmployees();
+      showToast(`Loaded ${repCount} reps across ${matchedStores} stores`, 'success');
+    } catch(err){
+      console.error(err);
+      showToast('Parse failed: ' + (err.message || 'unknown'), 'error');
+      const b = document.getElementById('parseBtn');
+      if(b){ b.disabled = false; b.textContent = 'Load Reps'; }
+    }
+  };
+  reader.onerror = () => { showToast('Could not read that file', 'error'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function addEmp(i, inputEl){
+  const store = state.data.stores[i];
+  const v = (inputEl.value || '').trim().toLowerCase();
+  if(!v) return;
+  if(v.indexOf('@') < 0 || v.indexOf('.') < 0){
+    inputEl.classList.add('err-border');
+    showToast("That doesn't look like a valid email address",'error');
+    return;
+  }
+  const list = state.data.storeEmployees[store] = state.data.storeEmployees[store] || [];
+  if(!list.map(e=>e.toLowerCase()).includes(v)){
+    list.push(v);
+    list.sort();
+    state.dirty = true;
+    renderEmployees();
+  } else {
+    inputEl.value = '';
+  }
+}
+
+function removeEmp(i, j){
+  const store = state.data.stores[i];
+  const list = state.data.storeEmployees[store];
+  if(!list) return;
+  list.splice(j, 1);
+  if(!list.length) delete state.data.storeEmployees[store];
+  state.dirty = true;
+  renderEmployees();
+}
+
+// ============================================================================
+//  ADMIN ACTIONS (Stores & Managers tab)
 // ============================================================================
 function addItem(){
   const v = document.getElementById('newItem').value.trim();
@@ -437,6 +693,7 @@ function removeItem(i){
   delete state.data.storeAMs[n];
   delete state.data.storeDMs[n];
   delete state.data.storeManagerNames[n];
+  delete state.data.storeEmployees[n];
   state.data.stores.splice(i, 1);
   state.dirty = true;
   renderAdmin();
@@ -455,7 +712,7 @@ function saveEdit(){
   if(v){
     const o = state.data.stores[state.editIdx];
     if(o !== v){
-      ['storeManagers','storeAMs','storeDMs','storeManagerNames'].forEach(key => {
+      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeEmployees'].forEach(key => {
         if(state.data[key][o] !== undefined){
           state.data[key][v] = state.data[key][o];
           delete state.data[key][o];
@@ -487,17 +744,17 @@ function updateStoreField(i, key, inputEl){
 async function saveToGitHub(){
   if(state.saving || !state.dirty) return;
   state.saving = true;
-  renderAdmin();
+  renderActive();
   try {
     await pushDirectoryToGitHub();
     state.dirty = false;
     state.saving = false;
-    renderAdmin();
+    renderActive();
     showToast('Saved to GitHub ✓','success');
   } catch (err) {
     console.error(err);
     state.saving = false;
-    renderAdmin();
+    renderActive();
     showToast('Save failed: ' + (err.message || 'unknown'),'error');
   }
 }
@@ -505,6 +762,7 @@ async function saveToGitHub(){
 async function reloadFromGitHub(){
   if(state.dirty && !confirm('You have unsaved changes. Reload anyway?')) return;
   state.editIdx = null;
+  state.lastUpload = null;
   bootstrapAdmin();
 }
 
