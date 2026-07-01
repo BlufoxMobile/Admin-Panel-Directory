@@ -10,10 +10,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0a0e1a;--card:#111827;--border:#1e293b;--accent:#3b82f6;--glow:rgba(59,130,246,0.25);--red:#ef4444;--green:#22c55e;--text:#f1f5f9;--muted:#94a3b8;--inp:#0f172a;--inpb:#334155;--warn:#fbbf24;--orange:#f97316}
 body{min-height:100vh;background:linear-gradient(175deg,var(--bg) 0%,#0f172a 100%);font-family:'DM Sans',sans-serif;color:var(--text);padding:24px 12px 60px;display:flex;justify-content:center}
-input,select,button{font-family:inherit}
+input,select,button,textarea{font-family:inherit}
 select option{background:var(--inp);color:var(--text)}
-input::placeholder{color:var(--muted);opacity:.6}
-input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--glow)!important}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.6}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--glow)!important}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--inpb);border-radius:3px}
 .lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
 .inp{width:100%;padding:11px 14px;font-size:15px;color:var(--text);background:var(--inp);border:1.5px solid var(--inpb);border-radius:8px;outline:none;transition:border-color .2s,box-shadow .2s}
@@ -56,6 +56,14 @@ input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3
 .email-chip{display:inline-flex;align-items:center;gap:6px;background:var(--inp);border:1px solid var(--inpb);border-radius:20px;padding:5px 10px 5px 12px;font-size:12px;color:var(--text);margin:3px}
 .email-chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0 2px}
 .email-chip button:hover{color:var(--red)}
+/* ---- Email Team feature ---- */
+.modal.wide{max-width:640px;max-height:90vh;overflow-y:auto}
+.grp-btn{flex:1;min-width:150px;text-align:left;padding:12px 14px;border-radius:10px;border:1.5px solid var(--inpb);background:var(--inp);cursor:pointer;transition:border-color .15s,background .15s}
+.grp-btn:hover{border-color:var(--accent)}
+.grp-btn.on{border-color:var(--accent);background:rgba(59,130,246,.14)}
+.grp-btn .g-name{font-size:14px;font-weight:700;color:var(--text)}
+.grp-btn .g-count{font-size:11px;color:var(--muted);margin-top:2px}
+textarea.inp{resize:vertical;line-height:1.5}
 </style>
 </head>
 <body>
@@ -71,6 +79,42 @@ input:focus,select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
       <button class="btn-secondary" onclick="closeTokenModal()">Cancel</button>
       <button class="btn-primary" onclick="saveToken()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL TEAM MODAL -->
+<div class="modal-overlay" id="emailModal">
+  <div class="modal wide">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <h2 style="margin:0 0 8px">✉️ Email Team</h2>
+      <button class="icon-btn" style="font-size:18px;color:var(--muted);margin-top:-2px" onclick="closeEmailModal()" title="Close">✕</button>
+    </div>
+    <p>Pick which groups to email, adjust the recipient list, write your message, then open it in Outlook. Everyone is placed on the <strong>BCC</strong> line so recipients can't see each other's address. Add any pictures or attachments in Outlook before you hit Send.</p>
+
+    <label class="lbl">Recipient groups</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="groupBtns"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <label class="lbl" style="margin:0">Recipients (<span id="recipCount">0</span>)</label>
+      <button onclick="clearRecipients()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">Clear all</button>
+    </div>
+    <div id="chipBox" style="display:flex;flex-wrap:wrap;gap:2px;min-height:44px;max-height:180px;overflow-y:auto;padding:8px;background:var(--inp);border:1.5px solid var(--inpb);border-radius:8px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      <input class="inp" id="addEmailInput" placeholder="Add another email address…" style="flex:1;padding:9px 12px;font-size:13px">
+      <button onclick="addManualEmail()" style="padding:9px 16px;font-size:13px;font-weight:600;background:var(--inpb);color:var(--text);border:none;border-radius:8px;cursor:pointer;white-space:nowrap">+ Add</button>
+    </div>
+
+    <label class="lbl">Subject</label>
+    <input class="inp" id="emailSubject" placeholder="e.g. Team update — please read" style="margin-bottom:16px">
+
+    <label class="lbl">Message</label>
+    <textarea class="inp" id="emailBody" rows="7" placeholder="Type your message here…"></textarea>
+    <p class="hint">Pictures &amp; attachments: click "Compose in Outlook" and add them there — Outlook opens pre-filled so you can drag in images or attach files before sending. For very large groups (like all reps), the addresses are copied to your clipboard so you can paste them into the BCC field.</p>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" style="flex:1;min-width:200px" onclick="composeInOutlook()">✉️ Compose in Outlook</button>
+      <button class="btn-secondary" onclick="copyRecipients()">⧉ Copy addresses</button>
     </div>
   </div>
 </div>
@@ -413,6 +457,7 @@ function headerHtml(title, sub, count){
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         ${statusPill}
+        <button onclick="openEmailModal()" class="btn-secondary" style="padding:8px 14px;font-size:12px">✉️ Email Team</button>
         <button onclick="openTokenModal()" class="btn-secondary" style="padding:8px 12px;font-size:12px">🔑</button>
       </div>
     </div>`;
@@ -673,6 +718,177 @@ function removeEmp(i, j){
   if(!list.length) delete state.data.storeEmployees[store];
   state.dirty = true;
   renderEmployees();
+}
+
+// ============================================================================
+//  EMAIL TEAM  (compose a message to selected groups, open prefilled in Outlook)
+// ============================================================================
+// Recipients are tracked as a Set of lowercased addresses (for dedupe), with a
+// parallel Map back to the original-cased address for display / sending.
+const emailSel = new Set();
+const emailDisplay = new Map();
+
+function uniqEmails(obj){
+  const out = [];
+  const seen = new Set();
+  Object.values(obj || {}).forEach(e => {
+    if(!e) return;
+    const v = String(e).trim();
+    if(!v) return;
+    const key = v.toLowerCase();
+    if(!seen.has(key)){ seen.add(key); out.push(v); }
+  });
+  return out;
+}
+// Flatten an object whose values are arrays of emails (storeEmployees) into a
+// single deduplicated list.
+function uniqEmailsFromArrays(obj){
+  const out = [];
+  const seen = new Set();
+  Object.values(obj || {}).forEach(arr => {
+    (Array.isArray(arr) ? arr : []).forEach(e => {
+      if(!e) return;
+      const v = String(e).trim();
+      if(!v) return;
+      const key = v.toLowerCase();
+      if(!seen.has(key)){ seen.add(key); out.push(v); }
+    });
+  });
+  return out;
+}
+function emailGroups(){
+  return {
+    sm:   { name: 'Store Managers',      list: uniqEmails(state.data.storeManagers) },
+    asm:  { name: 'Assistant Managers',  list: uniqEmails(state.data.storeAMs) },
+    dm:   { name: 'District Managers',   list: uniqEmails(state.data.storeDMs) },
+    reps: { name: 'Reps (all stores)',   list: uniqEmailsFromArrays(state.data.storeEmployees) }
+  };
+}
+function groupIsOn(list){
+  return list.length > 0 && list.every(e => emailSel.has(String(e).trim().toLowerCase()));
+}
+function addEmailToSel(v){
+  const raw = String(v).trim();
+  if(!raw) return;
+  const key = raw.toLowerCase();
+  if(!emailDisplay.has(key)) emailDisplay.set(key, raw);
+  emailSel.add(key);
+}
+function openEmailModal(){
+  emailSel.clear();
+  emailDisplay.clear();
+  document.getElementById('emailSubject').value = '';
+  document.getElementById('emailBody').value = '';
+  document.getElementById('addEmailInput').value = '';
+  renderGroupBtns();
+  renderRecipientChips();
+  document.getElementById('emailModal').classList.add('show');
+}
+function closeEmailModal(){
+  document.getElementById('emailModal').classList.remove('show');
+}
+function renderGroupBtns(){
+  const g = emailGroups();
+  document.getElementById('groupBtns').innerHTML = Object.keys(g).map(k => {
+    const on = groupIsOn(g[k].list);
+    const n = g[k].list.length;
+    const disabled = n === 0;
+    return `<button class="grp-btn ${on ? 'on' : ''}" ${disabled ? 'style="opacity:.55;cursor:not-allowed"' : ''} onclick="toggleGroup('${k}')">
+      <div class="g-name">${on ? '✓ ' : ''}${g[k].name}</div>
+      <div class="g-count">${n === 0 ? 'none on file' : n + ' email' + (n === 1 ? '' : 's')}</div>
+    </button>`;
+  }).join('');
+}
+function toggleGroup(k){
+  const list = emailGroups()[k].list;
+  if(list.length === 0){ showToast('No email addresses on file for this group yet','info'); return; }
+  if(groupIsOn(list)) list.forEach(e => emailSel.delete(String(e).trim().toLowerCase()));
+  else list.forEach(e => addEmailToSel(e));
+  renderGroupBtns();
+  renderRecipientChips();
+}
+function renderRecipientChips(){
+  const box = document.getElementById('chipBox');
+  const keys = [...emailSel];
+  document.getElementById('recipCount').textContent = keys.length;
+  if(keys.length === 0){
+    box.innerHTML = '<span style="color:var(--muted);font-size:13px;padding:4px">No recipients yet — pick a group above or add an address.</span>';
+    return;
+  }
+  box.innerHTML = keys.map(key =>
+    `<span class="email-chip">${escapeHtml(emailDisplay.get(key) || key)}<button type="button" data-key="${escapeAttr(key)}" title="Remove">✕</button></span>`
+  ).join('');
+  // Wire remove buttons via delegation (safe for any address, incl. quotes)
+  box.querySelectorAll('button[data-key]').forEach(btn => {
+    btn.addEventListener('click', () => recipientRemove(btn.getAttribute('data-key')));
+  });
+}
+function recipientRemove(key){
+  emailSel.delete(key);
+  renderGroupBtns();
+  renderRecipientChips();
+}
+function addManualEmail(){
+  const el = document.getElementById('addEmailInput');
+  const v = (el.value || '').trim();
+  if(!v) return;
+  if(!v.includes('@') || !v.includes('.')){ showToast('That doesn\'t look like a valid email','error'); return; }
+  addEmailToSel(v);
+  el.value = '';
+  renderGroupBtns();
+  renderRecipientChips();
+}
+function clearRecipients(){
+  emailSel.clear();
+  renderGroupBtns();
+  renderRecipientChips();
+}
+function currentRecipientEmails(){
+  return [...emailSel].map(k => emailDisplay.get(k) || k);
+}
+function composeInOutlook(){
+  const rec = currentRecipientEmails();
+  if(rec.length === 0){ showToast('Add at least one recipient first','error'); return; }
+  const subject = document.getElementById('emailSubject').value || '';
+  const body = document.getElementById('emailBody').value || '';
+  const to = FALLBACK_EMAIL;
+  const fullUrl = `mailto:${encodeURIComponent(to)}?bcc=${encodeURIComponent(rec.join(','))}`
+    + `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // mailto links have a practical length ceiling (~2000 chars) in Outlook/Windows.
+  // For big blasts (e.g. all reps) put the addresses on the clipboard and open a
+  // blank-BCC draft so the user can paste them into the BCC field.
+  if(fullUrl.length > 1800){
+    copyText(rec.join('; '), () => {
+      showToast(rec.length + ' recipients copied — paste into the BCC field in Outlook','info');
+    });
+    const slimUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = slimUrl;
+    return;
+  }
+  window.location.href = fullUrl;
+}
+function copyRecipients(){
+  const rec = currentRecipientEmails();
+  if(rec.length === 0){ showToast('No recipients to copy','error'); return; }
+  copyText(rec.join('; '), () => showToast('Copied ' + rec.length + ' addresses ✓','success'));
+}
+function copyText(txt, done){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt, done));
+  } else {
+    fallbackCopy(txt, done);
+  }
+}
+function fallbackCopy(txt, done){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); }
+  catch(_) { showToast('Could not copy automatically','error'); }
+  ta.remove();
 }
 
 // ============================================================================
