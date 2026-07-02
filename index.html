@@ -70,12 +70,12 @@ textarea.inp{resize:vertical;line-height:1.5}
 <div id="app" style="width:100%;max-width:720px"></div>
 <div class="toast" id="toast"></div>
 
-<!-- TOKEN MODAL -->
+<!-- UPLOAD KEY MODAL -->
 <div class="modal-overlay" id="tokenModal">
   <div class="modal">
-    <h2>GitHub Token Settings</h2>
-    <p>This page reads and writes <code style="color:var(--accent)">data/store-directory.json</code> in the <strong>Daily-Sales-Report</strong> repo. The embedded token is used by default. Override only if you need a different account's token.</p>
-    <input type="password" class="inp" id="tokenInput" placeholder="Leave blank to use embedded token">
+    <h2>Upload Key Settings</h2>
+    <p>This page reads <code style="color:var(--accent)">data/store-directory.json</code> from the public <strong>Daily-Sales-Report</strong> repo and saves changes through the Blufox upload proxy. Saving requires the shared upload key (you'll also be prompted automatically the first time you save).</p>
+    <input type="password" class="inp" id="tokenInput" placeholder="Blufox upload key">
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
       <button class="btn-secondary" onclick="closeTokenModal()">Cancel</button>
       <button class="btn-primary" onclick="saveToken()">Save</button>
@@ -173,14 +173,17 @@ const STORE_CROSSWALK = {
 // from the rep list. Everything else with an email counts as a rep.
 const MANAGER_ROLES = new Set(["store manager","assistant store manager","district manager"]);
 
-// ---- Embedded GitHub token (XOR-encoded, same scheme as crm.html) ----
-// If you need to update the token, edit _TOKEN_ENCODED in BOTH crm.html and this file
-// using the same _TOKEN_KEY ("blufox"). The encoder snippet is:
-//   const t='YOUR_TOKEN'; const k='blufox';
-//   JSON.stringify([...t].map((c,i)=>c.charCodeAt(0)^k.charCodeAt(i%k.length)))
-const _TOKEN_ENCODED = [5,5,1,14,26,26,61,28,20,18,48,73,83,47,52,46,45,76,85,61,69,14,93,0,51,59,66,53,90,48,53,35,22,57,32,10,17,88,71,86,1,46,16,58,3,15,29,32,59,26,1,50,34,21,17,5,48,55,31,11,49,10,61,62,45,8,49,30,58,21,43,8,27,57,24,28,31,34,42,63,58,85,46,63,39,4,23,52,89,57,48,15,63];
-const _TOKEN_KEY = 'blufox';
-const EMBEDDED_TOKEN = _TOKEN_ENCODED.map((c,i)=>String.fromCharCode(c ^ _TOKEN_KEY.charCodeAt(i % _TOKEN_KEY.length))).join('');
+// ---- Upload proxy — no GitHub token lives in this page. -------------------
+// All GitHub writes go through the Blufox upload proxy, a Google Apps Script
+// web app (github-upload-proxy.gs in the Daily-Sales-Report repo). The GitHub
+// token lives ONLY in the proxy's Script Properties.
+// DEPLOYMENT: script.google.com -> New project -> paste github-upload-proxy.gs
+//   -> Script Properties: GITHUB_TOKEN + UPLOAD_KEY -> Deploy -> Web app
+//   (Execute as: Me / Who has access: Anyone) -> paste the /exec URL below.
+const PROXY_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+// Upload key (the proxy passphrase) — shared across the Blufox pages,
+// kept per-browser in localStorage ('blufoxUploadKey').
+const UPLOAD_KEY_STORAGE = 'blufoxUploadKey';
 
 // ============================================================================
 //  STATE
@@ -217,14 +220,12 @@ const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','sto
 const app = document.getElementById('app');
 
 // ============================================================================
-//  TOKEN HANDLING (embedded with localStorage override)
+//  UPLOAD KEY HANDLING + WRITE TRANSPORT
+//  The shared upload key ('blufoxUploadKey') is kept per-browser in
+//  localStorage; the modal below lets an admin view/replace/clear it.
 // ============================================================================
-function getToken(){
-  const override = localStorage.getItem('blufox_github_token');
-  return override || EMBEDDED_TOKEN;
-}
 function openTokenModal(){
-  document.getElementById('tokenInput').value = localStorage.getItem('blufox_github_token') || '';
+  document.getElementById('tokenInput').value = localStorage.getItem(UPLOAD_KEY_STORAGE) || '';
   document.getElementById('tokenModal').classList.add('show');
 }
 function closeTokenModal(){
@@ -232,9 +233,76 @@ function closeTokenModal(){
 }
 function saveToken(){
   const t = document.getElementById('tokenInput').value.trim();
-  if(t){ localStorage.setItem('blufox_github_token', t); showToast('Custom token saved','success'); }
-  else { localStorage.removeItem('blufox_github_token'); showToast('Using embedded token','success'); }
+  if(t){ localStorage.setItem(UPLOAD_KEY_STORAGE, t); showToast('Upload key saved','success'); }
+  else { localStorage.removeItem(UPLOAD_KEY_STORAGE); showToast('Upload key cleared','success'); }
   closeTokenModal();
+}
+
+/* ---- WRITE TRANSPORT ------------------------------------------------
+   Every GitHub write goes through the Apps Script proxy. Payload contract
+   (must match github-upload-proxy.gs doPost):
+     { key: <upload key>, files: [{ repo, path, contentBase64, message }] }
+   The body is POSTed with Content-Type text/plain so the browser skips
+   the CORS preflight (Apps Script web apps don't answer OPTIONS); the
+   proxy parses e.postData.contents as JSON either way. fetch() follows
+   the script.google.com 302 redirect automatically. ------------------ */
+function getUploadKey(forcePrompt) {
+  let key = localStorage.getItem(UPLOAD_KEY_STORAGE);
+  if (!key || forcePrompt) {
+    key = prompt('Enter the Blufox upload key (asked once per browser):');
+    if (key && key.trim()) {
+      key = key.trim();
+      localStorage.setItem(UPLOAD_KEY_STORAGE, key);
+    } else {
+      key = null;
+    }
+  }
+  return key;
+}
+
+function clearUploadKey() {
+  localStorage.removeItem(UPLOAD_KEY_STORAGE);
+}
+
+async function proxyPost(payload) {
+  if (!PROXY_URL || PROXY_URL.indexOf('PASTE_') === 0) {
+    throw new Error('Upload proxy not configured — deploy github-upload-proxy.gs and set PROXY_URL at the top of this page.');
+  }
+  const res = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Proxy HTTP ' + res.status);
+  return await res.json();
+}
+
+// Collapse the proxy's per-repo / per-file results into one error string.
+function proxyErrorText(resp) {
+  const errs = [];
+  (resp.results || []).forEach(r => {
+    if (Array.isArray(r.files) && r.files.length) {
+      r.files.forEach(f => { if (!f.ok) errs.push(r.repo + '/' + f.path + ' — ' + (f.error || 'failed')); });
+    } else if (!r.ok) {
+      errs.push(r.repo + ' — ' + (r.error || 'failed'));
+    }
+  });
+  return errs.length ? errs.join('; ') : (resp.error || 'Upload failed');
+}
+
+async function proxyUpload(files) {
+  let key = getUploadKey(false);
+  if (!key) throw new Error('Upload key required — reload and enter the key when prompted.');
+  let resp = await proxyPost({ key: key, files: files });
+  if (!resp.ok && /bad key|unauthorized/i.test(String(resp.error || ''))) {
+    // Stored key was wrong — clear it and re-prompt exactly once.
+    clearUploadKey();
+    key = getUploadKey(true);
+    if (!key) throw new Error('Upload key required');
+    resp = await proxyPost({ key: key, files: files });
+  }
+  if (!resp.ok) throw new Error(proxyErrorText(resp));
+  return resp;
 }
 
 // ============================================================================
@@ -254,9 +322,8 @@ function showToast(msg, kind){
 // ============================================================================
 async function fetchDirectoryFromGitHub(){
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}?ref=${CONFIG.BRANCH}&_=${Date.now()}`;
+  // Unauthenticated read — the repo is public; no token lives in this page.
   const headers = { 'Accept': 'application/vnd.github+json' };
-  const token = getToken();
-  if(token) headers['Authorization'] = `Bearer ${token}`;
   const resp = await fetch(url, { headers });
   if(resp.status === 404){
     // File doesn't exist yet — seed with defaults
@@ -302,10 +369,9 @@ async function fetchDirectoryFromGitHub(){
 }
 
 async function pushDirectoryToGitHub(){
-  const token = getToken();
-  if(!token){ showToast('GitHub token unavailable','error'); return false; }
-  // Refetch just before write to minimize conflict on concurrent edits,
-  // and to pick up any unmanaged keys added by other tools.
+  // Refetch just before write to pick up any unmanaged keys added by other
+  // tools; the proxy's git-data flow makes the write itself conflict-safe
+  // (it retries on ref conflicts), so no sha is needed.
   let currentSha = state.sha;
   let extras = state.extras;
   try {
@@ -325,28 +391,13 @@ async function pushDirectoryToGitHub(){
     storeManagerNames: state.data.storeManagerNames,
     storeEmployees: state.data.storeEmployees
   };
-  const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
-  const body = {
-    message: 'Update store directory via admin page',
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
-    branch: CONFIG.BRANCH
-  };
-  if(currentSha) body.sha = currentSha;
-  const resp = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  if(!resp.ok){
-    const errText = await resp.text().catch(()=> '');
-    throw new Error('GitHub write failed: HTTP ' + resp.status + ' — ' + errText.slice(0,200));
-  }
-  const data = await resp.json();
-  state.sha = data.content.sha;
+  await proxyUpload([{
+    repo: CONFIG.REPO_NAME,
+    path: CONFIG.DATA_PATH,
+    contentBase64: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+    message: 'Update store directory via admin page'
+  }]);
+  state.sha = currentSha;
   state.extras = extras;
   state.updatedAt = payload.updatedAt;
   return true;
@@ -367,7 +418,7 @@ function renderLogin(){
       </div>
       <p id="pwErr" style="color:var(--red);font-size:13px;margin:8px 0 0;display:none">Incorrect password</p>
       <button class="btn-primary" style="margin-top:18px;width:100%" onclick="tryLogin()">Unlock</button>
-      <button onclick="openTokenModal()" style="margin-top:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
+      <button onclick="openTokenModal()" style="margin-top:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Upload key settings</button>
     </div>
   </div>`;
   document.getElementById('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
@@ -417,7 +468,7 @@ async function bootstrapAdmin(){
         <h2 style="font-size:18px;font-weight:700;margin:0 0 6px">Could not load directory</h2>
         <p style="font-size:13px;color:var(--muted);margin:0 0 20px">${err.message || 'Unknown error'}</p>
         <button class="btn-primary" onclick="bootstrapAdmin()">Try again</button>
-        <button onclick="openTokenModal()" style="margin-top:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
+        <button onclick="openTokenModal()" style="margin-top:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Upload key settings</button>
       </div>
     </div>`;
   }
