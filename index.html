@@ -681,7 +681,13 @@ function handleRosterUpload(){
         repRows++;
       }
 
-      // Replace the rep list for every matched store; leave unmatched stores as-is.
+      // A new upload is the source of truth: wipe every roster-mapped store's rep
+      // list first, so employees who left (and stores that are now empty) don't
+      // linger from a previous upload. Manually-added stores outside the roster
+      // crosswalk are left untouched.
+      Object.keys(STORE_CROSSWALK).forEach(store => { delete state.data.storeEmployees[store]; });
+
+      // Rebuild the rep list for every matched store from the uploaded file.
       // Each rep is stored as { first, last, email } and sorted by last then first name.
       let matchedStores = 0, repCount = 0;
       Object.keys(byStore).forEach(store => {
