@@ -70,12 +70,12 @@ textarea.inp{resize:vertical;line-height:1.5}
 <div id="app" style="width:100%;max-width:720px"></div>
 <div class="toast" id="toast"></div>
 
-<!-- UPLOAD KEY MODAL -->
+<!-- TOKEN MODAL -->
 <div class="modal-overlay" id="tokenModal">
   <div class="modal">
-    <h2>Upload Key Settings</h2>
-    <p>This page reads <code style="color:var(--accent)">data/store-directory.json</code> from the public <strong>Daily-Sales-Report</strong> repo and saves changes through the Blufox upload proxy. Saving requires the shared upload key (you'll also be prompted automatically the first time you save).</p>
-    <input type="password" class="inp" id="tokenInput" placeholder="Blufox upload key">
+    <h2>GitHub Token Settings</h2>
+    <p>This page reads and writes <code style="color:var(--accent)">data/store-directory.json</code> in the <strong>Daily-Sales-Report</strong> repo. The embedded token is used by default. Override only if you need a different account's token.</p>
+    <input type="password" class="inp" id="tokenInput" placeholder="Leave blank to use embedded token">
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
       <button class="btn-secondary" onclick="closeTokenModal()">Cancel</button>
       <button class="btn-primary" onclick="saveToken()">Save</button>
@@ -92,8 +92,15 @@ textarea.inp{resize:vertical;line-height:1.5}
     </div>
     <p>Pick which groups to email, adjust the recipient list, write your message, then open it in Outlook. Everyone is placed on the <strong>BCC</strong> line so recipients can't see each other's address. Add any pictures or attachments in Outlook before you hit Send.</p>
 
-    <label class="lbl">Recipient groups</label>
+    <label class="lbl">Recipient groups (whole region)</label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="groupBtns"></div>
+
+    <label class="lbl">Or add one store's team</label>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <select class="inp" id="storePick" style="flex:1;padding:10px 12px;font-size:13px" onchange="addStoreTeam(this.value); this.selectedIndex=0;">
+        <option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>
+      </select>
+    </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <label class="lbl" style="margin:0">Recipients (<span id="recipCount">0</span>)</label>
@@ -173,17 +180,14 @@ const STORE_CROSSWALK = {
 // from the rep list. Everything else with an email counts as a rep.
 const MANAGER_ROLES = new Set(["store manager","assistant store manager","district manager"]);
 
-// ---- Upload proxy — no GitHub token lives in this page. -------------------
-// All GitHub writes go through the Blufox upload proxy, a Google Apps Script
-// web app (github-upload-proxy.gs in the Daily-Sales-Report repo). The GitHub
-// token lives ONLY in the proxy's Script Properties.
-// DEPLOYMENT: script.google.com -> New project -> paste github-upload-proxy.gs
-//   -> Script Properties: GITHUB_TOKEN + UPLOAD_KEY -> Deploy -> Web app
-//   (Execute as: Me / Who has access: Anyone) -> paste the /exec URL below.
-const PROXY_URL = 'https://script.google.com/macros/s/AKfycbxZgDgRW9r-g5AHMyRTljX-fQpHO6ueqpL7qBgXwbDVrjfQSMTLEE4e70AX0oZXV_M74Q/exec';
-// Upload key (the proxy passphrase) — shared across the Blufox pages,
-// kept per-browser in localStorage ('blufoxUploadKey').
-const UPLOAD_KEY_STORAGE = 'blufoxUploadKey';
+// ---- Embedded GitHub token (XOR-encoded, same scheme as crm.html) ----
+// If you need to update the token, edit _TOKEN_ENCODED in BOTH crm.html and this file
+// using the same _TOKEN_KEY ("blufox"). The encoder snippet is:
+//   const t='YOUR_TOKEN'; const k='blufox';
+//   JSON.stringify([...t].map((c,i)=>c.charCodeAt(0)^k.charCodeAt(i%k.length)))
+const _TOKEN_ENCODED = [5,5,1,14,26,26,61,28,20,18,48,73,83,47,52,46,45,76,85,61,69,14,93,0,51,59,66,53,90,48,53,35,22,57,32,10,17,88,71,86,1,46,16,58,3,15,29,32,59,26,1,50,34,21,17,5,48,55,31,11,49,10,61,62,45,8,49,30,58,21,43,8,27,57,24,28,31,34,42,63,58,85,46,63,39,4,23,52,89,57,48,15,63];
+const _TOKEN_KEY = 'blufox';
+const EMBEDDED_TOKEN = _TOKEN_ENCODED.map((c,i)=>String.fromCharCode(c ^ _TOKEN_KEY.charCodeAt(i % _TOKEN_KEY.length))).join('');
 
 // ============================================================================
 //  STATE
@@ -220,12 +224,14 @@ const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','sto
 const app = document.getElementById('app');
 
 // ============================================================================
-//  UPLOAD KEY HANDLING + WRITE TRANSPORT
-//  The shared upload key ('blufoxUploadKey') is kept per-browser in
-//  localStorage; the modal below lets an admin view/replace/clear it.
+//  TOKEN HANDLING (embedded with localStorage override)
 // ============================================================================
+function getToken(){
+  const override = localStorage.getItem('blufox_github_token');
+  return override || EMBEDDED_TOKEN;
+}
 function openTokenModal(){
-  document.getElementById('tokenInput').value = localStorage.getItem(UPLOAD_KEY_STORAGE) || '';
+  document.getElementById('tokenInput').value = localStorage.getItem('blufox_github_token') || '';
   document.getElementById('tokenModal').classList.add('show');
 }
 function closeTokenModal(){
@@ -233,76 +239,9 @@ function closeTokenModal(){
 }
 function saveToken(){
   const t = document.getElementById('tokenInput').value.trim();
-  if(t){ localStorage.setItem(UPLOAD_KEY_STORAGE, t); showToast('Upload key saved','success'); }
-  else { localStorage.removeItem(UPLOAD_KEY_STORAGE); showToast('Upload key cleared','success'); }
+  if(t){ localStorage.setItem('blufox_github_token', t); showToast('Custom token saved','success'); }
+  else { localStorage.removeItem('blufox_github_token'); showToast('Using embedded token','success'); }
   closeTokenModal();
-}
-
-/* ---- WRITE TRANSPORT ------------------------------------------------
-   Every GitHub write goes through the Apps Script proxy. Payload contract
-   (must match github-upload-proxy.gs doPost):
-     { key: <upload key>, files: [{ repo, path, contentBase64, message }] }
-   The body is POSTed with Content-Type text/plain so the browser skips
-   the CORS preflight (Apps Script web apps don't answer OPTIONS); the
-   proxy parses e.postData.contents as JSON either way. fetch() follows
-   the script.google.com 302 redirect automatically. ------------------ */
-function getUploadKey(forcePrompt) {
-  let key = localStorage.getItem(UPLOAD_KEY_STORAGE);
-  if (!key || forcePrompt) {
-    key = prompt('Enter the Blufox upload key (asked once per browser):');
-    if (key && key.trim()) {
-      key = key.trim();
-      localStorage.setItem(UPLOAD_KEY_STORAGE, key);
-    } else {
-      key = null;
-    }
-  }
-  return key;
-}
-
-function clearUploadKey() {
-  localStorage.removeItem(UPLOAD_KEY_STORAGE);
-}
-
-async function proxyPost(payload) {
-  if (!PROXY_URL || PROXY_URL.indexOf('PASTE_') === 0) {
-    throw new Error('Upload proxy not configured — deploy github-upload-proxy.gs and set PROXY_URL at the top of this page.');
-  }
-  const res = await fetch(PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) throw new Error('Proxy HTTP ' + res.status);
-  return await res.json();
-}
-
-// Collapse the proxy's per-repo / per-file results into one error string.
-function proxyErrorText(resp) {
-  const errs = [];
-  (resp.results || []).forEach(r => {
-    if (Array.isArray(r.files) && r.files.length) {
-      r.files.forEach(f => { if (!f.ok) errs.push(r.repo + '/' + f.path + ' — ' + (f.error || 'failed')); });
-    } else if (!r.ok) {
-      errs.push(r.repo + ' — ' + (r.error || 'failed'));
-    }
-  });
-  return errs.length ? errs.join('; ') : (resp.error || 'Upload failed');
-}
-
-async function proxyUpload(files) {
-  let key = getUploadKey(false);
-  if (!key) throw new Error('Upload key required — reload and enter the key when prompted.');
-  let resp = await proxyPost({ key: key, files: files });
-  if (!resp.ok && /bad key|unauthorized/i.test(String(resp.error || ''))) {
-    // Stored key was wrong — clear it and re-prompt exactly once.
-    clearUploadKey();
-    key = getUploadKey(true);
-    if (!key) throw new Error('Upload key required');
-    resp = await proxyPost({ key: key, files: files });
-  }
-  if (!resp.ok) throw new Error(proxyErrorText(resp));
-  return resp;
 }
 
 // ============================================================================
@@ -322,8 +261,9 @@ function showToast(msg, kind){
 // ============================================================================
 async function fetchDirectoryFromGitHub(){
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}?ref=${CONFIG.BRANCH}&_=${Date.now()}`;
-  // Unauthenticated read — the repo is public; no token lives in this page.
   const headers = { 'Accept': 'application/vnd.github+json' };
+  const token = getToken();
+  if(token) headers['Authorization'] = `Bearer ${token}`;
   const resp = await fetch(url, { headers });
   if(resp.status === 404){
     // File doesn't exist yet — seed with defaults
@@ -369,9 +309,10 @@ async function fetchDirectoryFromGitHub(){
 }
 
 async function pushDirectoryToGitHub(){
-  // Refetch just before write to pick up any unmanaged keys added by other
-  // tools; the proxy's git-data flow makes the write itself conflict-safe
-  // (it retries on ref conflicts), so no sha is needed.
+  const token = getToken();
+  if(!token){ showToast('GitHub token unavailable','error'); return false; }
+  // Refetch just before write to minimize conflict on concurrent edits,
+  // and to pick up any unmanaged keys added by other tools.
   let currentSha = state.sha;
   let extras = state.extras;
   try {
@@ -391,13 +332,28 @@ async function pushDirectoryToGitHub(){
     storeManagerNames: state.data.storeManagerNames,
     storeEmployees: state.data.storeEmployees
   };
-  await proxyUpload([{
-    repo: CONFIG.REPO_NAME,
-    path: CONFIG.DATA_PATH,
-    contentBase64: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
-    message: 'Update store directory via admin page'
-  }]);
-  state.sha = currentSha;
+  const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
+  const body = {
+    message: 'Update store directory via admin page',
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+    branch: CONFIG.BRANCH
+  };
+  if(currentSha) body.sha = currentSha;
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if(!resp.ok){
+    const errText = await resp.text().catch(()=> '');
+    throw new Error('GitHub write failed: HTTP ' + resp.status + ' — ' + errText.slice(0,200));
+  }
+  const data = await resp.json();
+  state.sha = data.content.sha;
   state.extras = extras;
   state.updatedAt = payload.updatedAt;
   return true;
@@ -418,7 +374,7 @@ function renderLogin(){
       </div>
       <p id="pwErr" style="color:var(--red);font-size:13px;margin:8px 0 0;display:none">Incorrect password</p>
       <button class="btn-primary" style="margin-top:18px;width:100%" onclick="tryLogin()">Unlock</button>
-      <button onclick="openTokenModal()" style="margin-top:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Upload key settings</button>
+      <button onclick="openTokenModal()" style="margin-top:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
     </div>
   </div>`;
   document.getElementById('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
@@ -468,7 +424,7 @@ async function bootstrapAdmin(){
         <h2 style="font-size:18px;font-weight:700;margin:0 0 6px">Could not load directory</h2>
         <p style="font-size:13px;color:var(--muted);margin:0 0 20px">${err.message || 'Unknown error'}</p>
         <button class="btn-primary" onclick="bootstrapAdmin()">Try again</button>
-        <button onclick="openTokenModal()" style="margin-top:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Upload key settings</button>
+        <button onclick="openTokenModal()" style="margin-top:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">🔑 Token settings</button>
       </div>
     </div>`;
   }
@@ -596,7 +552,7 @@ function renderEmployees(){
   const stores = state.data.stores;
   const emp = state.data.storeEmployees || {};
   const totalReps = stores.reduce((n, s) => n + ((emp[s] || []).length), 0);
-  const subtitle = "Upload the BluFox Active Roster (.xlsx) to load every rep's email per store. Managers are handled on the other tab — this list is reps only. Saved to storeEmployees in store-directory.json.";
+  const subtitle = "Upload the BluFox Active Roster (.xlsx) to load every rep's name + email per store. Managers are handled on the other tab — this list is reps only. Saved to storeEmployees in store-directory.json.";
 
   const lastUploadHtml = state.lastUpload ? `
     <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--green)">
@@ -613,16 +569,25 @@ function renderEmployees(){
       : (inCrosswalk
           ? '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NO REPS YET</span>'
           : '<span style="font-size:10px;font-weight:700;color:var(--orange);background:rgba(249,115,22,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NOT IN ROSTER MAP</span>');
-    const chips = list.map((e,j) => `<span class="email-chip">${escapeHtml(e)}<button title="Remove" onclick="removeEmp(${i},${j})">✕</button></span>`).join('');
+    const chips = list.map((e,j) => {
+      const rep = repFields(e);
+      const nm = (rep.first + ' ' + rep.last).trim();
+      const label = nm
+        ? `<strong>${escapeHtml(nm)}</strong> <span style="color:var(--muted)">· ${escapeHtml(rep.email)}</span>`
+        : escapeHtml(rep.email);
+      return `<span class="email-chip">${label}<button title="Remove" onclick="removeEmp(${i},${j})">✕</button></span>`;
+    }).join('');
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word">${escapeHtml(store)}</span>
         ${badge}
       </div>
-      <div style="display:flex;flex-wrap:wrap">${chips || '<span style="font-size:12px;color:var(--muted);font-style:italic;padding:2px 4px">No rep emails. Upload the roster or add one below.</span>'}</div>
-      <div style="display:flex;gap:6px;margin-top:2px">
-        <input class="inp" type="email" placeholder="add rep email…" style="flex:1;padding:8px 10px;font-size:13px" onkeydown="if(event.key==='Enter'){addEmp(${i},this);}">
-        <button onclick="addEmp(${i},this.previousElementSibling)" style="padding:8px 14px;font-size:13px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">+ Add</button>
+      <div style="display:flex;flex-wrap:wrap">${chips || '<span style="font-size:12px;color:var(--muted);font-style:italic;padding:2px 4px">No reps yet. Upload the roster or add one below.</span>'}</div>
+      <div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap">
+        <input class="inp repadd-first" type="text" placeholder="First" style="flex:1;min-width:70px;padding:8px 10px;font-size:13px">
+        <input class="inp repadd-last" type="text" placeholder="Last" style="flex:1;min-width:70px;padding:8px 10px;font-size:13px">
+        <input class="inp repadd-email" type="email" placeholder="rep email…" style="flex:2;min-width:150px;padding:8px 10px;font-size:13px" onkeydown="if(event.key==='Enter'){addEmp(${i},this);}">
+        <button onclick="addEmp(${i},this)" style="padding:8px 14px;font-size:13px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">+ Add</button>
       </div>
     </div>`;
   };
@@ -638,7 +603,7 @@ function renderEmployees(){
         <input type="file" id="rosterFile" accept=".xlsx,.xls" style="flex:1;min-width:220px;font-size:13px;color:var(--muted)">
         <button id="parseBtn" onclick="handleRosterUpload()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">Load Reps</button>
       </div>
-      <p class="hint" style="margin-top:8px">Reads columns <strong>Store Number</strong>, <strong>Role</strong>, and <strong>Email</strong>. Matches each row to a store by Store Number, keeps non-manager roles, and <strong>replaces</strong> the rep list for every matched store.</p>
+      <p class="hint" style="margin-top:8px">Reads columns <strong>First Name</strong>, <strong>Last Name</strong>, <strong>Store Number</strong>, <strong>Role</strong>, and <strong>Email</strong>. Matches each row to a store by Store Number, keeps non-manager roles, and <strong>replaces</strong> the rep list (name + email) for every matched store.</p>
     </div>
 
     ${lastUploadHtml}
@@ -671,14 +636,19 @@ function handleRosterUpload(){
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
       if(!rows.length) throw new Error('Workbook is empty');
 
-      // Locate header row + the three columns we need (by name, case-insensitive).
-      let hr = -1, cStore = -1, cRole = -1, cEmail = -1;
+      // Locate header row + the columns we need (by name, case-insensitive).
+      let hr = -1, cStore = -1, cRole = -1, cEmail = -1, cFirst = -1, cLast = -1;
       for(let i = 0; i < Math.min(10, rows.length); i++){
         const r = (rows[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
         const si = r.findIndex(c => c === 'store number' || c === 'store #' || c === 'store number ');
         const ri = r.findIndex(c => c === 'role');
         const ei = r.findIndex(c => c === 'email');
-        if(si >= 0 && ei >= 0){ hr = i; cStore = si; cRole = ri; cEmail = ei; break; }
+        if(si >= 0 && ei >= 0){
+          hr = i; cStore = si; cRole = ri; cEmail = ei;
+          cFirst = r.findIndex(c => c === 'first name' || c === 'first');
+          cLast  = r.findIndex(c => c === 'last name'  || c === 'last');
+          break;
+        }
       }
       if(hr < 0) throw new Error('Could not find a header row with "Store Number" and "Email" columns. Is this the Active Roster export?');
 
@@ -689,28 +659,34 @@ function handleRosterUpload(){
         if(!(num in num2store)) num2store[num] = name;
       });
 
-      const byStore = {};                 // directory store -> Set(emails)
+      const byStore = {};                 // directory store -> Map(emailLower -> {first,last,email})
       const skippedCount = {};            // roster store# (not mapped) -> count
       let repRows = 0;
+      const clean = v => String(v == null ? '' : v).replace(/ /g, ' ').trim();
       for(let i = hr + 1; i < rows.length; i++){
         const r = rows[i];
         if(!r) continue;
-        const rawNum = r[cStore] == null ? '' : String(r[cStore]).trim();
-        const email  = r[cEmail] == null ? '' : String(r[cEmail]).trim().toLowerCase();
-        const role   = (cRole >= 0 && r[cRole] != null) ? String(r[cRole]).trim().toLowerCase() : '';
+        const rawNum = clean(r[cStore]);
+        const email  = clean(r[cEmail]).toLowerCase();
+        const role   = (cRole >= 0) ? clean(r[cRole]).toLowerCase() : '';
         if(!email || email.indexOf('@') < 0) continue;
         if(MANAGER_ROLES.has(role)) continue;          // reps only — skip managers
         const num = rawNum.match(/\d{4,6}/) ? rawNum.match(/\d{4,6}/)[0] : rawNum;
         const storeName = num2store[num];
         if(!storeName){ if(num) skippedCount[num] = (skippedCount[num]||0)+1; continue; }
-        (byStore[storeName] = byStore[storeName] || new Set()).add(email);
+        const first = cFirst >= 0 ? clean(r[cFirst]) : '';
+        const last  = cLast  >= 0 ? clean(r[cLast])  : '';
+        const m = (byStore[storeName] = byStore[storeName] || new Map());
+        if(!m.has(email)) m.set(email, { first, last, email });
         repRows++;
       }
 
       // Replace the rep list for every matched store; leave unmatched stores as-is.
+      // Each rep is stored as { first, last, email } and sorted by last then first name.
       let matchedStores = 0, repCount = 0;
       Object.keys(byStore).forEach(store => {
-        const arr = Array.from(byStore[store]).sort();
+        const arr = Array.from(byStore[store].values()).sort((a, b) =>
+          (a.last || '').localeCompare(b.last || '') || (a.first || '').localeCompare(b.first || ''));
         state.data.storeEmployees[store] = arr;
         matchedStores++; repCount += arr.length;
       });
@@ -741,24 +717,32 @@ function handleRosterUpload(){
   reader.readAsArrayBuffer(file);
 }
 
-function addEmp(i, inputEl){
+function addEmp(i, el){
   const store = state.data.stores[i];
-  const v = (inputEl.value || '').trim().toLowerCase();
-  if(!v) return;
-  if(v.indexOf('@') < 0 || v.indexOf('.') < 0){
-    inputEl.classList.add('err-border');
+  const wrap = el.closest('div');
+  const fEl = wrap.querySelector('.repadd-first');
+  const lEl = wrap.querySelector('.repadd-last');
+  const eEl = wrap.querySelector('.repadd-email');
+  const first = fEl ? (fEl.value || '').trim() : '';
+  const last  = lEl ? (lEl.value || '').trim() : '';
+  const email = eEl ? (eEl.value || '').trim().toLowerCase() : '';
+  if(!email) return;
+  if(email.indexOf('@') < 0 || email.indexOf('.') < 0){
+    if(eEl) eEl.classList.add('err-border');
     showToast("That doesn't look like a valid email address",'error');
     return;
   }
   const list = state.data.storeEmployees[store] = state.data.storeEmployees[store] || [];
-  if(!list.map(e=>e.toLowerCase()).includes(v)){
-    list.push(v);
-    list.sort();
-    state.dirty = true;
-    renderEmployees();
-  } else {
-    inputEl.value = '';
+  if(list.some(x => repFields(x).email.toLowerCase() === email)){
+    showToast('That rep is already listed for this store','info');
+    return;
   }
+  list.push({ first, last, email });
+  list.sort((a, b) =>
+    (repFields(a).last || '').localeCompare(repFields(b).last || '') ||
+    (repFields(a).first || '').localeCompare(repFields(b).first || ''));
+  state.dirty = true;
+  renderEmployees();
 }
 
 function removeEmp(i, j){
@@ -791,20 +775,36 @@ function uniqEmails(obj){
   });
   return out;
 }
-// Flatten an object whose values are arrays of emails (storeEmployees) into a
-// single deduplicated list.
+// Flatten an object whose values are arrays of rep entries (storeEmployees) into
+// a single deduplicated list of email strings. Rep entries may be {first,last,email}
+// objects (current format) or plain email strings (legacy format).
 function uniqEmailsFromArrays(obj){
   const out = [];
   const seen = new Set();
   Object.values(obj || {}).forEach(arr => {
-    (Array.isArray(arr) ? arr : []).forEach(e => {
-      if(!e) return;
-      const v = String(e).trim();
+    (Array.isArray(arr) ? arr : []).forEach(entry => {
+      const v = repFields(entry).email.trim();
       if(!v) return;
       const key = v.toLowerCase();
       if(!seen.has(key)){ seen.add(key); out.push(v); }
     });
   });
+  return out;
+}
+// Emails (deduped) for one store's whole team: manager, AM, DM, and all reps.
+function emailsForStore(store){
+  const out = [];
+  const seen = new Set();
+  const add = e => {
+    const v = String(e || '').trim();
+    if(!v) return;
+    const k = v.toLowerCase();
+    if(!seen.has(k)){ seen.add(k); out.push(v); }
+  };
+  add(state.data.storeManagers[store]);
+  add(state.data.storeAMs[store]);
+  add(state.data.storeDMs[store]);
+  (state.data.storeEmployees[store] || []).forEach(entry => add(repFields(entry).email));
   return out;
 }
 function emailGroups(){
@@ -831,9 +831,25 @@ function openEmailModal(){
   document.getElementById('emailSubject').value = '';
   document.getElementById('emailBody').value = '';
   document.getElementById('addEmailInput').value = '';
+  // Populate the "one store's team" picker from the current store list.
+  const sp = document.getElementById('storePick');
+  if(sp){
+    sp.innerHTML = '<option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>'
+      + state.data.stores.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+  }
   renderGroupBtns();
   renderRecipientChips();
   document.getElementById('emailModal').classList.add('show');
+}
+// Add one store's entire team (manager, AM, DM, and reps) to the recipient list.
+function addStoreTeam(store){
+  if(!store) return;
+  const emails = emailsForStore(store);
+  if(emails.length === 0){ showToast('No emails on file for ' + store + ' yet','info'); return; }
+  emails.forEach(e => addEmailToSel(e));
+  renderGroupBtns();
+  renderRecipientChips();
+  showToast('Added ' + emails.length + ' from ' + store, 'success');
 }
 function closeEmailModal(){
   document.getElementById('emailModal').classList.remove('show');
@@ -1040,6 +1056,18 @@ function escapeHtml(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s){ return escapeHtml(s); }
+// Normalize a rep entry (either {first,last,email} object or a legacy email string)
+// into a consistent { first, last, email } shape.
+function repFields(entry){
+  if(entry && typeof entry === 'object'){
+    return {
+      first: entry.first || entry.firstName || '',
+      last:  entry.last  || entry.lastName  || '',
+      email: entry.email || ''
+    };
+  }
+  return { first: '', last: '', email: String(entry == null ? '' : entry) };
+}
 function formatUpdatedAt(iso){
   try {
     const d = new Date(iso);
