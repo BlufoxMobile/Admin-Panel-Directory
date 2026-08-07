@@ -568,7 +568,7 @@ function renderEmployees(){
 
   const lastUploadHtml = state.lastUpload ? `
     <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--green)">
-      <div style="font-size:13px;color:var(--text);font-weight:600">Loaded <strong style="color:var(--green)">${state.lastUpload.repCount}</strong> reps across <strong style="color:var(--green)">${state.lastUpload.matchedStores}</strong> stores from <span style="color:var(--muted)">${escapeHtml(state.lastUpload.fileName)}</span></div>
+      <div style="font-size:13px;color:var(--text);font-weight:600">Loaded <strong style="color:var(--green)">${state.lastUpload.repCount}</strong> reps across <strong style="color:var(--green)">${state.lastUpload.matchedStores}</strong> stores${(state.lastUpload.amNamesFilled != null) ? ` · filled <strong style="color:var(--green)">${state.lastUpload.amNamesFilled}</strong> Assistant Manager name${state.lastUpload.amNamesFilled === 1 ? '' : 's'}` : ''} from <span style="color:var(--muted)">${escapeHtml(state.lastUpload.fileName)}</span></div>
       ${state.lastUpload.skipped && state.lastUpload.skipped.length ? `<p class="hint" style="margin-top:8px">${state.lastUpload.skipped.length} roster location(s) not in this directory were skipped (e.g. ${escapeHtml(state.lastUpload.skipped.slice(0,3).map(x=>x.store).join(', '))}${state.lastUpload.skipped.length>3?'…':''}). That's expected — only the ${Object.keys(STORE_CROSSWALK).length} mapped stores are tracked here.</p>` : ''}
       ${state.lastUpload.noMatch && state.lastUpload.noMatch.length ? `<p class="hint" style="margin-top:6px;color:var(--warn)">No roster match for: ${escapeHtml(state.lastUpload.noMatch.join(', '))}. Add a Store Number to STORE_CROSSWALK or enter reps manually below.</p>` : ''}
     </div>` : '';
@@ -709,6 +709,29 @@ function handleRosterUpload(){
         matchedStores++; repCount += arr.length;
       });
 
+      // Fill in Assistant Manager NAMES from the roster, matched by the AM email
+      // already saved for each store. (Managers type the AM email; this looks up
+      // the matching person in the roster and sets their name — no manual typing.)
+      const emailToName = {};
+      for(let i = hr + 1; i < rows.length; i++){
+        const r = rows[i];
+        if(!r) continue;
+        const em = clean(r[cEmail]).toLowerCase();
+        if(!em || em.indexOf('@') < 0) continue;
+        if(!emailToName[em]){
+          const nm = ((cFirst >= 0 ? clean(r[cFirst]) : '') + ' ' + (cLast >= 0 ? clean(r[cLast]) : '')).trim();
+          if(nm) emailToName[em] = nm;
+        }
+      }
+      let amNamesFilled = 0;
+      state.data.stores.forEach(store => {
+        const amEmail = String(state.data.storeAMs[store] || '').trim().toLowerCase();
+        if(!amEmail) return;
+        const nm = emailToName[amEmail];
+        if(nm && state.data.storeAMNames[store] !== nm){ state.data.storeAMNames[store] = nm; amNamesFilled++; }
+        else if(nm){ amNamesFilled++; }
+      });
+
       // Directory stores that ARE in the crosswalk but got zero rows this upload.
       const noMatch = state.data.stores.filter(s =>
         Object.prototype.hasOwnProperty.call(STORE_CROSSWALK, s) && !(state.data.storeEmployees[s] && state.data.storeEmployees[s].length)
@@ -718,12 +741,13 @@ function handleRosterUpload(){
         fileName: file.name,
         matchedStores,
         repCount,
+        amNamesFilled,
         skipped: Object.keys(skippedCount).map(n => ({ store: n, count: skippedCount[n] })),
         noMatch
       };
       state.dirty = true;
       renderEmployees();
-      showToast(`Loaded ${repCount} reps across ${matchedStores} stores`, 'success');
+      showToast(`Loaded ${repCount} reps across ${matchedStores} stores · ${amNamesFilled} AM names`, 'success');
     } catch(err){
       console.error(err);
       showToast('Parse failed: ' + (err.message || 'unknown'), 'error');
