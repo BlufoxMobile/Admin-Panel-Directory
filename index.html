@@ -142,7 +142,7 @@ const ADMIN_PASS = 'Password123!';
 const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
 
 // ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
-const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Machesney Park Xfinity Store","Michigan City Xfinity Store","Oak Lawn Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
+const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
 
 // ---- Store-number crosswalk: directory store name -> BluFox roster "Store Number" ----
 // Used by the Employee Emails tab to match roster rows to the directory stores.
@@ -174,9 +174,9 @@ const STORE_CROSSWALK = {
   "Tinley Park Xfinity Store": "55002",
   "Uptown Xfinity Store": "55009",
   "Valparaiso Xfinity Store": "55000",
-  "Machesney Park Xfinity Store": "51038",  "Oak Lawn Xfinity Store": "51039"
-  // Oak Lawn = 51039, added Jul 31 2026.
-  // North Knoxville: add here once its roster Store Number is known, e.g.
+  "Machesney Park Xfinity Store": "51038"
+  // Oak Lawn and North Knoxville: add here once their roster Store Numbers are known, e.g.
+  // ,"Oak Lawn Xfinity Store": "NNNNN"
   // ,"North Knoxville Xfinity Store": "NNNNN"
 };
 
@@ -216,6 +216,7 @@ const state = {
     storeAMs: {},
     storeDMs: {},
     storeManagerNames: {},
+    storeAMNames: {},
     storeEmployees: {}
   },
   editIdx: null,
@@ -223,7 +224,7 @@ const state = {
 };
 
 // Keys this page owns. Everything else in the JSON passes through untouched.
-const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeEmployees'];
+const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeEmployees'];
 
 const app = document.getElementById('app');
 
@@ -280,6 +281,7 @@ async function fetchDirectoryFromGitHub(){
         storeAMs: {},
         storeDMs: {},
         storeManagerNames: {},
+        storeAMNames: {},
         storeEmployees: {}
       },
       extras: {},
@@ -303,6 +305,7 @@ async function fetchDirectoryFromGitHub(){
       storeAMs: (json.storeAMs && typeof json.storeAMs === 'object') ? json.storeAMs : {},
       storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
       storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {},
+      storeAMNames: (json.storeAMNames && typeof json.storeAMNames === 'object') ? json.storeAMNames : {},
       storeEmployees: (json.storeEmployees && typeof json.storeEmployees === 'object') ? json.storeEmployees : {}
     },
     extras,
@@ -334,6 +337,7 @@ async function pushDirectoryToGitHub(){
     storeAMs: state.data.storeAMs,
     storeDMs: state.data.storeDMs,
     storeManagerNames: state.data.storeManagerNames,
+    storeAMNames: state.data.storeAMNames,
     storeEmployees: state.data.storeEmployees
   };
   const url = `${CONFIG.API_BASE}/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.DATA_PATH}`;
@@ -412,6 +416,7 @@ async function bootstrapAdmin(){
     const result = await fetchDirectoryFromGitHub();
     state.data = result.data;
     if(!state.data.storeEmployees) state.data.storeEmployees = {};
+    if(!state.data.storeAMNames) state.data.storeAMNames = {};
     state.extras = result.extras;
     state.sha = result.sha;
     state.updatedAt = result.updatedAt;
@@ -479,7 +484,7 @@ function headerHtml(title, sub, count){
 // ============================================================================
 function renderAdmin(){
   const stores = state.data.stores;
-  const subtitle = "Type each store's Manager name, Manager email, Assistant Manager email, and DM email. These values feed the credit form and the New Hire onboarding form.";
+  const subtitle = "Type each store's Manager name & email, Assistant Manager name & email, and DM email. These values feed the credit form and the New Hire onboarding form.";
 
   const buildMappingRow = (item, i) => {
     if(state.editIdx === i){
@@ -489,7 +494,8 @@ function renderAdmin(){
     const am  = state.data.storeAMs[item] || '';
     const dm  = state.data.storeDMs[item] || '';
     const mgrName = state.data.storeManagerNames[item] || '';
-    const mappedBadge = (mgr || dm || mgrName || am)
+    const amName = state.data.storeAMNames[item] || '';
+    const mappedBadge = (mgr || dm || mgrName || am || amName)
       ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
       : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
@@ -508,6 +514,8 @@ function renderAdmin(){
         <input class="inp" type="text" placeholder="e.g. Jane Smith" value="${escapeAttr(mgrName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeManagerNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Mgr Email</span>
         <input class="inp" type="email" placeholder="e.g. jsmith@blufoxmobile.com" value="${escapeAttr(mgr)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeManagers',this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">AM Name</span>
+        <input class="inp" type="text" placeholder="e.g. Jane Doe" value="${escapeAttr(amName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">AM Email</span>
         <input class="inp" type="email" placeholder="e.g. asmith@blufoxmobile.com" value="${escapeAttr(am)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMs',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
@@ -986,6 +994,7 @@ function removeItem(i){
   delete state.data.storeAMs[n];
   delete state.data.storeDMs[n];
   delete state.data.storeManagerNames[n];
+  delete state.data.storeAMNames[n];
   delete state.data.storeEmployees[n];
   state.data.stores.splice(i, 1);
   state.dirty = true;
@@ -1005,7 +1014,7 @@ function saveEdit(){
   if(v){
     const o = state.data.stores[state.editIdx];
     if(o !== v){
-      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeEmployees'].forEach(key => {
+      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeEmployees'].forEach(key => {
         if(state.data[key][o] !== undefined){
           state.data[key][v] = state.data[key][o];
           delete state.data[key][o];
@@ -1021,7 +1030,7 @@ function saveEdit(){
 function updateStoreField(i, key, inputEl){
   const n = state.data.stores[i];
   const v = (inputEl.value || '').trim();
-  const isEmailField = key !== 'storeManagerNames';
+  const isEmailField = key !== 'storeManagerNames' && key !== 'storeAMNames';
   if(v && isEmailField && (!v.includes('@') || !v.includes('.'))){
     inputEl.classList.add('err-border');
     showToast('That doesn\'t look like a valid email address','error');
