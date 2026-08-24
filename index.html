@@ -218,6 +218,7 @@ const state = {
     storeDMs: {},
     storeManagerNames: {},
     storeAMNames: {},
+    storeDMNames: {},
     storeEmployees: {}
   },
   editIdx: null,
@@ -225,7 +226,7 @@ const state = {
 };
 
 // Keys this page owns. Everything else in the JSON passes through untouched.
-const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeEmployees'];
+const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'];
 
 const app = document.getElementById('app');
 
@@ -355,6 +356,7 @@ async function fetchDirectoryFromGitHub(){
         storeDMs: {},
         storeManagerNames: {},
         storeAMNames: {},
+        storeDMNames: {},
         storeEmployees: {}
       },
       extras: {},
@@ -376,6 +378,7 @@ async function fetchDirectoryFromGitHub(){
       storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
       storeManagerNames: (json.storeManagerNames && typeof json.storeManagerNames === 'object') ? json.storeManagerNames : {},
       storeAMNames: (json.storeAMNames && typeof json.storeAMNames === 'object') ? json.storeAMNames : {},
+      storeDMNames: (json.storeDMNames && typeof json.storeDMNames === 'object') ? json.storeDMNames : {},
       storeEmployees: (json.storeEmployees && typeof json.storeEmployees === 'object') ? json.storeEmployees : {}
     },
     extras,
@@ -403,6 +406,7 @@ async function pushDirectoryToGitHub(){
     storeDMs: state.data.storeDMs,
     storeManagerNames: state.data.storeManagerNames,
     storeAMNames: state.data.storeAMNames,
+    storeDMNames: state.data.storeDMNames,
     storeEmployees: state.data.storeEmployees
   };
   // Write through the upload proxy — the proxy holds the GitHub token and
@@ -470,6 +474,7 @@ async function bootstrapAdmin(){
     state.data = result.data;
     if(!state.data.storeEmployees) state.data.storeEmployees = {};
     if(!state.data.storeAMNames) state.data.storeAMNames = {};
+    if(!state.data.storeDMNames) state.data.storeDMNames = {};
     state.extras = result.extras;
     state.updatedAt = result.updatedAt;
     state.loaded = true;
@@ -536,7 +541,7 @@ function headerHtml(title, sub, count){
 // ============================================================================
 function renderAdmin(){
   const stores = state.data.stores;
-  const subtitle = "Type each store's Manager name & email, Assistant Manager name & email, and DM email. These values feed the credit form and the New Hire onboarding form.";
+  const subtitle = "Type each store's Manager, Assistant Manager and District Manager name & email. These values feed the credit form, the New Hire onboarding form, and the name/email pickers on the Mobile, Upgrade and Internet quote sheets.";
 
   const buildMappingRow = (item, i) => {
     if(state.editIdx === i){
@@ -547,7 +552,8 @@ function renderAdmin(){
     const dm  = state.data.storeDMs[item] || '';
     const mgrName = state.data.storeManagerNames[item] || '';
     const amName = state.data.storeAMNames[item] || '';
-    const mappedBadge = (mgr || dm || mgrName || am || amName)
+    const dmName = state.data.storeDMNames[item] || '';
+    const mappedBadge = (mgr || dm || mgrName || am || amName || dmName)
       ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
       : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
@@ -570,6 +576,8 @@ function renderAdmin(){
         <input class="inp" type="text" placeholder="e.g. Jane Doe" value="${escapeAttr(amName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">AM Email</span>
         <input class="inp" type="email" placeholder="e.g. asmith@blufoxmobile.com" value="${escapeAttr(am)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMs',this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Name</span>
+        <input class="inp" type="text" placeholder="e.g. Dana Smith" value="${escapeAttr(dmName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeDMNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
         <input class="inp" type="email" placeholder="e.g. dsmith@blufoxmobile.com" value="${escapeAttr(dm)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeDMs',this)">
       </div>
@@ -1071,6 +1079,7 @@ function removeItem(i){
   delete state.data.storeDMs[n];
   delete state.data.storeManagerNames[n];
   delete state.data.storeAMNames[n];
+  delete state.data.storeDMNames[n];
   delete state.data.storeEmployees[n];
   state.data.stores.splice(i, 1);
   state.dirty = true;
@@ -1090,7 +1099,7 @@ function saveEdit(){
   if(v){
     const o = state.data.stores[state.editIdx];
     if(o !== v){
-      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeEmployees'].forEach(key => {
+      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'].forEach(key => {
         if(state.data[key][o] !== undefined){
           state.data[key][v] = state.data[key][o];
           delete state.data[key][o];
@@ -1106,7 +1115,7 @@ function saveEdit(){
 function updateStoreField(i, key, inputEl){
   const n = state.data.stores[i];
   const v = (inputEl.value || '').trim();
-  const isEmailField = key !== 'storeManagerNames' && key !== 'storeAMNames';
+  const isEmailField = key !== 'storeManagerNames' && key !== 'storeAMNames' && key !== 'storeDMNames';
   if(v && isEmailField && (!v.includes('@') || !v.includes('.'))){
     inputEl.classList.add('err-border');
     showToast('That doesn\'t look like a valid email address','error');
