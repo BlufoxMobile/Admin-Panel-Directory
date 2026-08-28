@@ -95,10 +95,10 @@ textarea.inp{resize:vertical;line-height:1.5}
     <label class="lbl">Recipient groups (whole region)</label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="groupBtns"></div>
 
-    <label class="lbl">Or add one store's team</label>
+    <label class="lbl">Or add one district's or one store's team</label>
     <div style="display:flex;gap:8px;margin-bottom:16px">
-      <select class="inp" id="storePick" style="flex:1;padding:10px 12px;font-size:13px" onchange="addStoreTeam(this.value); this.selectedIndex=0;">
-        <option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>
+      <select class="inp" id="storePick" style="flex:1;padding:10px 12px;font-size:13px" onchange="addTeamPick(this.value); this.selectedIndex=0;">
+        <option value="">— Pick a district or a store to add its managers, AMs, DM &amp; reps —</option>
       </select>
     </div>
 
@@ -1366,6 +1366,45 @@ function emailsForStore(store){
   (state.data.storeEmployees[store] || []).forEach(entry => add(repFields(entry).email));
   return out;
 }
+// Values in the store/district picker are bare store names for stores; districts
+// are prefixed so the one <select> can carry both without a store name ever
+// being mistaken for a district id.
+const DISTRICT_PICK_PREFIX = 'district:';
+// Emails (deduped, case-insensitively) for one district: every store assigned to
+// it — manager, AM, DM and reps, exactly what emailsForStore() collects — plus
+// the district's own DM, so a district with no stores yet still reaches its DM.
+function emailsForDistrict(id){
+  const d = districtById(id);
+  if(!d) return [];
+  const out = [];
+  const seen = new Set();
+  const add = e => {
+    const v = String(e || '').trim();
+    if(!v) return;
+    const k = v.toLowerCase();
+    if(!seen.has(k)){ seen.add(k); out.push(v); }
+  };
+  add(d.dm);
+  districtStores(id).forEach(store => emailsForStore(store).forEach(add));
+  return out;
+}
+// The "Districts" optgroup for the picker. Districts are labelled the way the
+// Districts tab labels them (district name — DM name) with the recipient count
+// worded like the group buttons above. If districts[] has not been seeded yet
+// there is nothing to name a district by, so the whole optgroup is left out and
+// the picker looks exactly as it did before.
+function districtPickOptions(){
+  const ds = Array.isArray(state.data.districts) ? state.data.districts : [];
+  if(ds.length === 0) return '';
+  const opts = ds.map(d => {
+    const n = emailsForDistrict(d.id).length;
+    const nm = districtDmName(d);
+    const label = (d.name || d.id) + (nm ? ' — ' + nm : '')
+      + ' · ' + (n === 0 ? 'none on file' : n + ' email' + (n === 1 ? '' : 's'));
+    return `<option value="${escapeAttr(DISTRICT_PICK_PREFIX + d.id)}">${escapeHtml(label)}</option>`;
+  }).join('');
+  return `<optgroup label="Districts">${opts}</optgroup>`;
+}
 function emailGroups(){
   return {
     sm:   { name: 'Store Managers',      list: uniqEmails(state.data.storeManagers) },
@@ -1390,15 +1429,39 @@ function openEmailModal(){
   document.getElementById('emailSubject').value = '';
   document.getElementById('emailBody').value = '';
   document.getElementById('addEmailInput').value = '';
-  // Populate the "one store's team" picker from the current store list.
+  // Populate the district/store picker: districts first, then every store.
   const sp = document.getElementById('storePick');
   if(sp){
-    sp.innerHTML = '<option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>'
-      + state.data.stores.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+    const storeOpts = state.data.stores.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+    sp.innerHTML = '<option value="">— Pick a district or a store to add its managers, AMs, DM &amp; reps —</option>'
+      + districtPickOptions()
+      + `<optgroup label="Stores">${storeOpts}</optgroup>`;
   }
   renderGroupBtns();
   renderRecipientChips();
   document.getElementById('emailModal').classList.add('show');
+}
+// The picker holds both districts and stores; route the picked value to the
+// right adder. Store options still carry the bare store name, so addStoreTeam()
+// is reached exactly as before.
+function addTeamPick(v){
+  const val = String(v == null ? '' : v);
+  if(!val) return;
+  if(val.indexOf(DISTRICT_PICK_PREFIX) === 0) addDistrictTeam(val.slice(DISTRICT_PICK_PREFIX.length));
+  else addStoreTeam(val);
+}
+// Add every address in one district (all of its stores' teams, plus its DM) to
+// the recipient list. Dedupe is the recipient Set's, same as every other adder.
+function addDistrictTeam(id){
+  const d = districtById(id);
+  if(!d) return;
+  const label = d.name || d.id;
+  const emails = emailsForDistrict(id);
+  if(emails.length === 0){ showToast('No emails on file for the ' + label + ' district yet','info'); return; }
+  emails.forEach(e => addEmailToSel(e));
+  renderGroupBtns();
+  renderRecipientChips();
+  showToast('Added ' + emails.length + ' from ' + label, 'success');
 }
 // Add one store's entire team (manager, AM, DM, and reps) to the recipient list.
 function addStoreTeam(store){
