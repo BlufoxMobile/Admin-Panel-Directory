@@ -155,6 +155,26 @@ const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
 // ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
 const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
 
+// ---- Bundled district defaults (used ONLY when the data file has no "districts"
+//      key yet — the one-time migration). Store names here are the short form;
+//      they are matched to the full "<name> Xfinity Store" entries in stores[].
+//      This list is the FALLBACK: a store that already has a storeDMs email takes
+//      its district from that email instead, so nothing Jeff already set is lost.
+//      The store lists below mirror the live storeDMs split, so the fresh-file
+//      path and the migration path land on the same answer.
+const DEFAULT_DISTRICTS = [
+  { id:'north-side', name:'North Side', dm:'IDhorajiwala@blufoxmobile.com', dmName:'Imaad Dhorajiwala',
+    stores:['Cicero','Evanston','Kildeer','Machesney Park','South Skokie','Uptown'] },
+  { id:'south-side', name:'South Side', dm:'juCarrillo@blufoxmobile.com',   dmName:'Juan Carrillo',
+    stores:['Bourbonnais','Evergreen Park','Frankfort','Oak Lawn','Tinley Park'] },
+  { id:'east-side',  name:'East Side',  dm:'jcabrales@blufoxmobile.com',    dmName:'Jacob Cabrales',
+    stores:['Elkhart','Hammond','Michigan City','Schererville','South Bend','Valparaiso'] },
+  { id:'big-south',  name:'Big South',  dm:'mbrooks@blufoxmobile.com',      dmName:'Matthew Brooks',
+    stores:['Greeneville','Johnson City','North Knoxville','Oak Ridge','South Knoxville'] },
+  { id:'west-side',  name:'West Side',  dm:'tchowdhury@blufoxmobile.com',   dmName:'Tanzim Chowdhury',
+    stores:['Burbank','Calumet City','Dekalb','Glenview','Round Lake Beach'] }
+];
+
 // ---- Store-number crosswalk: directory store name -> BluFox roster "Store Number" ----
 // Used by the Employee Emails tab to match roster rows to the directory stores.
 // Verified 6-18-2026 against "BluFox Active Roster" (manager emails cross-checked).
@@ -204,7 +224,7 @@ const state = {
   saving: false,
   dirty: false,
   updatedAt: null,
-  tab: 'stores',            // 'stores' | 'employees'
+  tab: 'stores',            // 'stores' | 'districts' | 'employees'
   lastUpload: null,         // { fileName, matchedStores, repCount, skipped:[{store,count}] }
   // Any keys in the data file this page doesn't manage (e.g. storeAddresses)
   // are kept here untouched and written back on save.
@@ -213,6 +233,8 @@ const state = {
     stores: [],
     managers: [],
     dms: [],
+    districts: [],           // [{ id, name, dm, dmName }] — ordered; id is a stable slug
+    storeDistricts: {},      // full store name -> district id
     storeManagers: {},
     storeAMs: {},
     storeDMs: {},
@@ -226,7 +248,7 @@ const state = {
 };
 
 // Keys this page owns. Everything else in the JSON passes through untouched.
-const MANAGED_KEYS = ['updatedAt','stores','managers','dms','storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'];
+const MANAGED_KEYS = ['updatedAt','stores','managers','dms','districts','storeDistricts','storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'];
 
 const app = document.getElementById('app');
 
@@ -351,6 +373,8 @@ async function fetchDirectoryFromGitHub(){
         stores: [...DEFAULT_STORES],
         managers: [],
         dms: [],
+        districts: [],
+        storeDistricts: {},
         storeManagers: {},
         storeAMs: {},
         storeDMs: {},
@@ -361,7 +385,8 @@ async function fetchDirectoryFromGitHub(){
       },
       extras: {},
       updatedAt: null,
-      firstTime: true
+      firstTime: true,
+      hadDistricts: false
     };
   }
   if(!resp.ok) throw new Error('Directory fetch failed: HTTP ' + resp.status);
@@ -373,6 +398,8 @@ async function fetchDirectoryFromGitHub(){
       stores: Array.isArray(json.stores) ? json.stores : [],
       managers: Array.isArray(json.managers) ? json.managers : [],
       dms: Array.isArray(json.dms) ? json.dms : [],
+      districts: Array.isArray(json.districts) ? json.districts.map(normalizeDistrict).filter(Boolean) : [],
+      storeDistricts: (json.storeDistricts && typeof json.storeDistricts === 'object') ? json.storeDistricts : {},
       storeManagers: (json.storeManagers && typeof json.storeManagers === 'object') ? json.storeManagers : {},
       storeAMs: (json.storeAMs && typeof json.storeAMs === 'object') ? json.storeAMs : {},
       storeDMs: (json.storeDMs && typeof json.storeDMs === 'object') ? json.storeDMs : {},
@@ -383,7 +410,10 @@ async function fetchDirectoryFromGitHub(){
     },
     extras,
     updatedAt: json.updatedAt || null,
-    firstTime: false
+    firstTime: false,
+    // Missing "districts" key = this file predates the district layer, so the
+    // one-time seed/migration should run.
+    hadDistricts: Array.isArray(json.districts)
   };
 }
 
@@ -401,9 +431,11 @@ async function pushDirectoryToGitHub(){
     stores: state.data.stores,
     managers: state.data.managers,
     dms: state.data.dms,
+    districts: state.data.districts,
     storeManagers: state.data.storeManagers,
     storeAMs: state.data.storeAMs,
     storeDMs: state.data.storeDMs,
+    storeDistricts: state.data.storeDistricts,
     storeManagerNames: state.data.storeManagerNames,
     storeAMNames: state.data.storeAMNames,
     storeDMNames: state.data.storeDMNames,
@@ -475,12 +507,29 @@ async function bootstrapAdmin(){
     if(!state.data.storeEmployees) state.data.storeEmployees = {};
     if(!state.data.storeAMNames) state.data.storeAMNames = {};
     if(!state.data.storeDMNames) state.data.storeDMNames = {};
+    if(!Array.isArray(state.data.districts)) state.data.districts = [];
+    if(!state.data.storeDistricts) state.data.storeDistricts = {};
     state.extras = result.extras;
     state.updatedAt = result.updatedAt;
     state.loaded = true;
     state.dirty = !!result.firstTime; // mark dirty if seeded from defaults so user is nudged to save
+    // Learn DM display names straight out of the file (storeDMs <-> storeDMNames
+    // are already paired there), so the Districts tab can label a DM without
+    // anyone retyping the name.
+    learnDmNamesFromData(state.data);
+    // One-time district migration, then keep storeDMs / storeDMNames in step with
+    // whatever the districts say.
+    const seeded = result.hadDistricts ? false : seedDistricts();
+    // Older files kept the DM name only in storeDMNames — lift it onto the
+    // district object so districts[].dmName is authoritative from now on.
+    const backfilled = backfillDistrictDmNames();
+    const synced = syncAllDistrictDerived();
+    if(backfilled) state.dirty = true;
+    if(seeded || synced) state.dirty = true;
     renderActive();
     if(result.firstTime) showToast('No directory file found — seeded with defaults. Click Save to commit.','info');
+    else if(seeded) showToast('Districts added from the built-in defaults — review the Districts tab, then Save.','info');
+    else if(synced) showToast('Refreshed ' + synced + ' store DM field(s) from their district. Click Save to commit.','info');
   } catch (err) {
     console.error(err);
     app.innerHTML = `
@@ -506,11 +555,13 @@ function switchTab(t){
 }
 function renderActive(){
   if(state.tab === 'employees') renderEmployees();
+  else if(state.tab === 'districts') renderDistricts();
   else renderAdmin();
 }
 function tabBarHtml(){
   return `<div class="tabbar">
     <button class="tabbtn ${state.tab==='stores'?'active':''}" onclick="switchTab('stores')">Stores &amp; Managers</button>
+    <button class="tabbtn ${state.tab==='districts'?'active':''}" onclick="switchTab('districts')">Districts</button>
     <button class="tabbtn ${state.tab==='employees'?'active':''}" onclick="switchTab('employees')">Employee Emails (Reps)</button>
   </div>`;
 }
@@ -537,7 +588,7 @@ function headerHtml(title, sub, count){
 }
 
 // ============================================================================
-//  ADMIN SCREEN — TAB 1: Stores & Managers (unchanged behavior)
+//  ADMIN SCREEN — TAB 1: Stores & Managers
 // ============================================================================
 function renderAdmin(){
   const stores = state.data.stores;
@@ -556,11 +607,17 @@ function renderAdmin(){
     const mappedBadge = (mgr || dm || mgrName || am || amName || dmName)
       ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">ASSIGNED</span>'
       : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">UNASSIGNED</span>';
+    // Second pill: every store should land in exactly one district.
+    const distId = state.data.storeDistricts[item] || '';
+    const distBadge = districtById(distId)
+      ? ''
+      : '<span style="font-size:10px;font-weight:700;color:var(--orange);background:rgba(249,115,22,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NO DISTRICT</span>';
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
           <span style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word">${escapeHtml(item)}</span>
           ${mappedBadge}
+          ${distBadge}
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button class="icon-btn" style="color:var(--accent);font-size:13px" onclick="startEdit(${i})" title="Rename store">✏️</button>
@@ -576,11 +633,17 @@ function renderAdmin(){
         <input class="inp" type="text" placeholder="e.g. Jane Doe" value="${escapeAttr(amName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">AM Email</span>
         <input class="inp" type="email" placeholder="e.g. asmith@blufoxmobile.com" value="${escapeAttr(am)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeAMs',this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">District</span>
+        <select class="inp" style="padding:8px 10px;font-size:13px" onchange="updateStoreDistrict(${i}, this.value)">
+          <option value="" ${distId ? '' : 'selected'}>— No district —</option>
+          ${state.data.districts.map(d => `<option value="${escapeAttr(d.id)}" ${d.id === distId ? 'selected' : ''}>${escapeHtml(d.name || d.id)}</option>`).join('')}
+        </select>
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Name</span>
         <input class="inp" type="text" placeholder="e.g. Dana Smith" value="${escapeAttr(dmName)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeDMNames',this)">
         <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
         <input class="inp" type="email" placeholder="e.g. dsmith@blufoxmobile.com" value="${escapeAttr(dm)}" style="padding:8px 10px;font-size:13px" onchange="updateStoreField(${i},'storeDMs',this)">
       </div>
+      ${distId ? '<p class="hint" style="margin:0">DM Name &amp; DM Email are set by the district — change the district\'s DM on the Districts tab and every store in it follows.</p>' : ''}
     </div>`;
   };
 
@@ -618,7 +681,394 @@ function renderAdmin(){
 }
 
 // ============================================================================
-//  EMPLOYEES SCREEN — TAB 2: Employee Emails (Reps)
+//  DISTRICTS SCREEN — TAB 2: Districts
+//  A district sits between a store and its DM. districts[] is the single source
+//  of truth for DM assignment: a store's district decides its DM email
+//  (storeDMs) and DM display name (storeDMNames). Both are still written out in
+//  full so the quote sheets, credit form and onboarding form don't have to do
+//  the join themselves.
+// ============================================================================
+
+// DM email (lowercased) -> display name. Seeded from the bundled defaults, then
+// topped up from whatever the data file and the roster already know, so nobody
+// types a DM's name twice.
+const DM_NAME_HINTS = {};
+DEFAULT_DISTRICTS.forEach(d => { DM_NAME_HINTS[d.dm.toLowerCase()] = d.dmName; });
+
+function rememberDmName(email, name){
+  const e = String(email == null ? '' : email).trim().toLowerCase();
+  const n = String(name == null ? '' : name).trim();
+  if(e && n) DM_NAME_HINTS[e] = n;
+}
+function dmNameFor(email){
+  const e = String(email == null ? '' : email).trim().toLowerCase();
+  if(!e) return '';
+  // districts[] is the source of truth: if a district names this DM, that wins.
+  // Everything else (names mined from the file, the roster, the bundled seeds)
+  // is only a fallback for a DM no district has named yet.
+  const owner = state.data.districts.find(x =>
+    String(x.dm || '').trim().toLowerCase() === e && String(x.dmName || '').trim());
+  if(owner) return String(owner.dmName).trim();
+  return DM_NAME_HINTS[e] || '';
+}
+// The display name a district should stamp onto its stores.
+function districtDmName(d){
+  if(!d) return '';
+  return String(d.dmName || '').trim() || dmNameFor(d.dm);
+}
+// Files written before dmName existed carry the name only in storeDMNames —
+// lift it onto the district object once so a district with no stores can keep it.
+function backfillDistrictDmNames(){
+  let filled = 0;
+  state.data.districts.forEach(d => {
+    if(d.dm && !String(d.dmName || '').trim()){
+      const nm = dmNameFor(d.dm);
+      if(nm){ d.dmName = nm; filled++; }
+    }
+  });
+  return filled;
+}
+// storeDMs and storeDMNames are already paired per store in the file — mine them
+// so a DM's name survives a reload without anyone retyping it.
+function learnDmNamesFromData(data){
+  Object.keys(data.storeDMs || {}).forEach(store => {
+    rememberDmName(data.storeDMs[store], (data.storeDMNames || {})[store]);
+  });
+}
+
+// Keep only well-formed district records when reading the file.
+function normalizeDistrict(d){
+  if(!d || typeof d !== 'object') return null;
+  const id = String(d.id == null ? '' : d.id).trim();
+  if(!id) return null;
+  return {
+    id: id,
+    name: String(d.name == null ? '' : d.name).trim() || id,
+    dm: String(d.dm == null ? '' : d.dm).trim(),
+    dmName: String(d.dmName == null ? '' : d.dmName).trim()
+  };
+}
+
+// Ids are slugs and are STABLE — renaming a district keeps its id, so
+// storeDistricts never has to be rewritten.
+function slugifyDistrictId(name){
+  const base = String(name == null ? '' : name).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return base || 'district';
+}
+function uniqueDistrictId(base){
+  let id = base, n = 2;
+  while(state.data.districts.some(d => d.id === id)){ id = base + '-' + n; n++; }
+  return id;
+}
+function districtById(id){
+  if(!id) return null;
+  return state.data.districts.find(d => d.id === id) || null;
+}
+function districtStores(id){
+  return state.data.stores.filter(s => state.data.storeDistricts[s] === id);
+}
+function unassignedStores(){
+  return state.data.stores.filter(s => !districtById(state.data.storeDistricts[s]));
+}
+
+// Push a district's DM down onto every store in it. Returns how many store
+// fields actually changed, so callers can tell whether there is anything to save.
+function syncDistrictDerived(id){
+  const d = districtById(id);
+  if(!d || !d.dm) return 0;
+  const nm = districtDmName(d);
+  let changed = 0;
+  districtStores(id).forEach(store => {
+    if(state.data.storeDMs[store] !== d.dm){ state.data.storeDMs[store] = d.dm; changed++; }
+    if(nm){
+      if(state.data.storeDMNames[store] !== nm){ state.data.storeDMNames[store] = nm; changed++; }
+    } else if(state.data.storeDMNames[store] !== undefined){
+      // No display name on file for this DM yet — clear rather than leave the
+      // PREVIOUS DM's name sitting next to the new email. Blank is recoverable;
+      // wrong is not. Type the name once on the Districts tab and it fills in.
+      delete state.data.storeDMNames[store];
+      changed++;
+    }
+  });
+  return changed;
+}
+function syncAllDistrictDerived(){
+  let changed = 0;
+  state.data.districts.forEach(d => { changed += syncDistrictDerived(d.id); });
+  return changed;
+}
+
+// Match a short seed name ("Round Lake Beach") to the full store key
+// ("Round Lake Beach Xfinity Store"). Exact matches only — no fuzzy guessing.
+function findStoreByShortName(short){
+  const full = String(short + ' Xfinity Store').toLowerCase();
+  const lower = String(short).toLowerCase();
+  return state.data.stores.find(s => s.toLowerCase() === full)
+      || state.data.stores.find(s => s.toLowerCase() === lower)
+      || null;
+}
+
+// One-time migration, run when the data file has no "districts" key yet. Adds
+// the bundled districts and assigns every store:
+//   1. by the storeDMs email it already has (Jeff's live data wins), then
+//   2. by the bundled seed store list as a fallback.
+// It never clears an assignment that is already in the file.
+function seedDistricts(){
+  if(state.data.districts.length) return false;
+  state.data.districts = DEFAULT_DISTRICTS.map(d => ({ id: d.id, name: d.name, dm: d.dm, dmName: d.dmName }));
+  DEFAULT_DISTRICTS.forEach(d => rememberDmName(d.dm, d.dmName));
+  const idByDmEmail = {};
+  DEFAULT_DISTRICTS.forEach(d => { idByDmEmail[d.dm.toLowerCase()] = d.id; });
+  state.data.stores.forEach(store => {
+    if(districtById(state.data.storeDistricts[store])) return;   // already assigned
+    const email = String(state.data.storeDMs[store] || '').trim().toLowerCase();
+    const fromEmail = email ? idByDmEmail[email] : null;
+    if(fromEmail){ state.data.storeDistricts[store] = fromEmail; return; }
+    const seed = DEFAULT_DISTRICTS.find(d => d.stores.some(sn => findStoreByShortName(sn) === store));
+    if(seed) state.data.storeDistricts[store] = seed.id;
+  });
+  return true;
+}
+
+// Checked before every save. Hard errors block the save; unassigned stores only
+// warn, because a brand-new store is legitimately district-less for a minute.
+function validateDistricts(){
+  const errors = [];
+  const seenId = new Set(), seenName = new Set();
+  state.data.districts.forEach(d => {
+    const id = String(d.id || '').trim();
+    const nm = String(d.name || '').trim();
+    if(!id) errors.push('a district is missing its id');
+    else if(seenId.has(id)) errors.push('two districts share the id "' + id + '"');
+    if(id) seenId.add(id);
+    if(!nm) errors.push('district "' + (id || '?') + '" has no name');
+    else if(seenName.has(nm.toLowerCase())) errors.push('two districts are both called "' + nm + '"');
+    if(nm) seenName.add(nm.toLowerCase());
+    if(!String(d.dm || '').trim()) errors.push('district "' + (nm || id || '?') + '" has no district manager');
+  });
+  // Districts whose DM has no display name anywhere yet — a warning, not an
+  // error: storeDMs is still correct, only storeDMNames is left blank.
+  const namelessDMs = state.data.districts.filter(d => d.dm && !districtDmName(d));
+  return { errors: errors, unassigned: unassignedStores(), namelessDMs: namelessDMs };
+}
+
+// ---- Actions ---------------------------------------------------------------
+function addDistrict(){
+  const el = document.getElementById('newDistrict');
+  const v = el ? (el.value || '').trim() : '';
+  if(!v){ showToast('Type a district name first','error'); return; }
+  if(state.data.districts.some(d => String(d.name || '').toLowerCase() === v.toLowerCase())){
+    showToast('There is already a district called "' + v + '"','error');
+    return;
+  }
+  state.data.districts.push({ id: uniqueDistrictId(slugifyDistrictId(v)), name: v, dm: '', dmName: '' });
+  state.dirty = true;
+  renderDistricts();
+}
+function removeDistrict(i){
+  const d = state.data.districts[i];
+  if(!d) return;
+  const n = districtStores(d.id).length;
+  const warn = n ? '\n\n' + n + ' store' + (n === 1 ? '' : 's') + ' will be left without a district. Their DM email and DM name stay exactly as they are.' : '';
+  if(!confirm('Remove the "' + d.name + '" district?' + warn)) return;
+  districtStores(d.id).forEach(store => { delete state.data.storeDistricts[store]; });
+  state.data.districts.splice(i, 1);
+  state.dirty = true;
+  renderDistricts();
+}
+function updateDistrictName(i, el){
+  const d = state.data.districts[i];
+  if(!d) return;
+  const v = (el.value || '').trim();
+  if(!v){ showToast('A district needs a name','error'); renderDistricts(); return; }
+  if(state.data.districts.some((x, j) => j !== i && String(x.name || '').toLowerCase() === v.toLowerCase())){
+    showToast('There is already a district called "' + v + '"','error');
+    renderDistricts();
+    return;
+  }
+  // The id is NEVER recomputed on rename. storeDistricts keys off it, and so
+  // does the NPS page — renaming "West Side" to "Chicago West" must leave the
+  // slug "west-side" alone.
+  d.name = v;
+  state.dirty = true;
+  renderDistricts();
+}
+function updateDistrictDM(i, el){
+  const d = state.data.districts[i];
+  if(!d) return;
+  let v = el.value;
+  if(v === '__new__'){
+    // The picker only lists dms[] — this is the one place a new DM email gets in.
+    const entered = prompt('District manager email address:', '');
+    v = (entered || '').trim();
+    if(!v || v.indexOf('@') < 0 || v.indexOf('.') < 0){
+      if(entered !== null) showToast('That doesn\'t look like a valid email address','error');
+      renderDistricts();
+      return;
+    }
+    if(!state.data.dms.some(e => String(e).toLowerCase() === v.toLowerCase())) state.data.dms.push(v);
+  }
+  d.dm = v;
+  // Re-resolve the display name for the NEW dm — clear first so this district's
+  // stale dmName can't answer for the address that just replaced it.
+  d.dmName = '';
+  d.dmName = dmNameFor(v);
+  syncDistrictDerived(d.id);   // every store in the district follows the new DM
+  state.dirty = true;
+  renderDistricts();
+}
+function updateDistrictDMName(i, el){
+  const d = state.data.districts[i];
+  if(!d) return;
+  if(!d.dm){ showToast('Pick this district\'s DM email first','error'); renderDistricts(); return; }
+  d.dmName = (el.value || '').trim();   // the district owns the name from here
+  rememberDmName(d.dm, d.dmName);
+  syncDistrictDerived(d.id);
+  state.dirty = true;
+  renderDistricts();
+}
+// Called from the district <select> on each store row (Stores & Managers tab).
+function updateStoreDistrict(i, id){
+  const store = state.data.stores[i];
+  if(!store) return;
+  if(id){
+    state.data.storeDistricts[store] = id;
+    const d = districtById(id);
+    if(d && d.dm){
+      // The district owns the DM from here on — write both email and name.
+      state.data.storeDMs[store] = d.dm;
+      const nm = districtDmName(d);
+      if(nm) state.data.storeDMNames[store] = nm;
+      else delete state.data.storeDMNames[store];
+    }
+  } else {
+    delete state.data.storeDistricts[store];
+  }
+  state.dirty = true;
+  renderActive();
+}
+// Drop one store out of a district from the Districts tab. The store keeps its
+// DM email / DM name — only the district link goes away.
+function unassignStoreFromDistrict(i){
+  const store = state.data.stores[i];
+  if(!store) return;
+  delete state.data.storeDistricts[store];
+  state.dirty = true;
+  renderDistricts();
+}
+
+// ---- Render ----------------------------------------------------------------
+function renderDistricts(){
+  const ds = state.data.districts;
+  const check = validateDistricts();
+  const subtitle = "Each district owns its DM. Change the DM here and every store in that district gets the same DM email and DM name written into storeDMs / storeDMNames. Assign stores to a district on the Stores &amp; Managers tab, or drop one from a district below.";
+
+  const dmSelectHtml = (d, i) => {
+    const list = state.data.dms.slice();
+    // Show a DM that isn't in dms[] anyway, so nothing silently disappears.
+    if(d.dm && !list.some(e => String(e).toLowerCase() === d.dm.toLowerCase())) list.unshift(d.dm);
+    const opts = list.map(e => {
+      const nm = dmNameFor(e);
+      const sel = String(e).toLowerCase() === String(d.dm || '').toLowerCase() ? 'selected' : '';
+      return `<option value="${escapeAttr(e)}" ${sel}>${escapeHtml(nm ? nm + ' — ' + e : e)}</option>`;
+    }).join('');
+    return `<select class="inp" style="padding:8px 10px;font-size:13px" onchange="updateDistrictDM(${i}, this)">
+        <option value="" ${d.dm ? '' : 'selected'}>— Pick a district manager —</option>
+        ${opts}
+        <option value="__new__">+ Add a new DM email…</option>
+      </select>`;
+  };
+
+  const buildDistrictRow = (d, i) => {
+    const mine = districtStores(d.id);
+    const dmBadge = !d.dm
+      ? '<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(239,68,68,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NO DM</span>'
+      : (districtDmName(d)
+          ? '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">DM SET</span>'
+          : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">NEEDS DM NAME</span>');
+    const chips = mine.map(s =>
+      `<span class="email-chip">${escapeHtml(s)}<button title="Remove from this district" onclick="unassignStoreFromDistrict(${state.data.stores.indexOf(s)})">✕</button></span>`
+    ).join('');
+    return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:14px 18px;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word">${escapeHtml(d.name || d.id)}</span>
+          <span class="badge" style="background:${mine.length ? 'var(--accent)' : 'var(--inpb)'}">${mine.length}</span>
+          ${dmBadge}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="icon-btn" style="color:var(--red);font-size:15px" onclick="removeDistrict(${i})" title="Remove district">✕</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:85px 1fr;gap:8px 10px;align-items:center;font-size:12px">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Name</span>
+        <input class="inp" type="text" placeholder="e.g. North Side" value="${escapeAttr(d.name || '')}" style="padding:8px 10px;font-size:13px" onchange="updateDistrictName(${i},this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Email</span>
+        ${dmSelectHtml(d, i)}
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">DM Name</span>
+        <input class="inp" type="text" placeholder="e.g. Dana Smith" value="${escapeAttr(districtDmName(d))}" style="padding:8px 10px;font-size:13px" onchange="updateDistrictDMName(${i},this)">
+        <span style="color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Stores</span>
+        <div style="display:flex;flex-wrap:wrap">${chips || '<span style="font-size:12px;color:var(--muted);font-style:italic;padding:2px 4px">No stores yet — assign them on the Stores &amp; Managers tab.</span>'}</div>
+      </div>
+      <p class="hint" style="margin:0">Slug <code style="color:var(--muted)">${escapeHtml(d.id)}</code> — stays the same when you rename, so storeDistricts keeps pointing here.</p>
+    </div>`;
+  };
+
+  const errorHtml = check.errors.length ? `
+    <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--red)">
+      <div style="font-size:13px;font-weight:700;color:var(--red)">Fix before saving</div>
+      <p class="hint" style="margin-top:6px;color:var(--text)">${check.errors.map(escapeHtml).join(' · ')}</p>
+    </div>` : '';
+
+  const nameWarnHtml = check.namelessDMs.length ? `
+    <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--warn)">
+      <div style="font-size:13px;font-weight:700;color:var(--warn)">${check.namelessDMs.length} district${check.namelessDMs.length === 1 ? '' : 's'} with no DM display name</div>
+      <p class="hint" style="margin-top:6px;color:var(--text)">${escapeHtml(check.namelessDMs.map(d => (d.name || d.id) + ' (' + d.dm + ')').join(', '))}</p>
+      <p class="hint" style="margin-top:6px">Type the DM's name in the DM Name box below once — it gets written into storeDMNames for every store in the district. Until then those stores have a DM email but no DM name.</p>
+    </div>` : '';
+
+  const warnHtml = check.unassigned.length ? `
+    <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--warn)">
+      <div style="font-size:13px;font-weight:700;color:var(--warn)">${check.unassigned.length} store${check.unassigned.length === 1 ? '' : 's'} not in any district</div>
+      <p class="hint" style="margin-top:6px;color:var(--text)">${escapeHtml(check.unassigned.join(', '))}</p>
+      <p class="hint" style="margin-top:6px">Every store should sit in exactly one district. Pick one on the Stores &amp; Managers tab — saving still works, this is only a reminder.</p>
+    </div>` : '';
+
+  app.innerHTML = `
+  <div style="animation:fadeUp .4s ease both">
+    ${tabBarHtml()}
+    ${headerHtml('Districts', subtitle, ds.length)}
+
+    <div class="card" style="padding:18px;margin-bottom:14px">
+      <label class="lbl" style="margin-bottom:6px">Add District</label>
+      <div style="display:flex;gap:8px">
+        <input class="inp" id="newDistrict" placeholder="e.g. Far West Side" style="flex:1">
+        <button onclick="addDistrict()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">+ Add district</button>
+      </div>
+      <p class="hint" style="margin-top:8px">After adding, pick the district's DM below, then assign its stores on the Stores &amp; Managers tab.</p>
+    </div>
+
+    ${errorHtml}
+    ${warnHtml}
+    ${nameWarnHtml}
+
+    <div class="card" style="padding:6px 0;max-height:520px;overflow-y:auto">
+      ${ds.length === 0 ? '<p style="color:var(--muted);font-size:14px;text-align:center;padding:24px">No districts yet. Add one above.</p>' : ''}
+      ${ds.map((d, i) => buildDistrictRow(d, i)).join('')}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-primary" onclick="saveToGitHub()" ${state.dirty ? '' : 'disabled'} style="flex:1;min-width:200px">${state.dirty ? '💾 Save to GitHub' : '✓ All changes saved'}</button>
+      <button class="btn-secondary" onclick="reloadFromGitHub()" title="Reload from GitHub (discards unsaved changes)">↻ Reload</button>
+    </div>
+  </div>`;
+
+  document.getElementById('newDistrict')?.addEventListener('keydown', e => { if(e.key === 'Enter') addDistrict(); });
+}
+
+// ============================================================================
+//  EMPLOYEES SCREEN — TAB 3: Employee Emails (Reps)
 // ============================================================================
 function renderEmployees(){
   const stores = state.data.stores;
@@ -783,6 +1233,13 @@ function handleRosterUpload(){
           if(nm) emailToName[em] = nm;
         }
       }
+      // The roster also carries the district managers, so use it to learn/refresh
+      // DM display names (the Districts tab writes them out to storeDMNames).
+      Object.keys(emailToName).forEach(em => {
+        if(state.data.dms.some(d => String(d).toLowerCase() === em)) rememberDmName(em, emailToName[em]);
+      });
+      syncAllDistrictDerived();
+
       let amNamesFilled = 0;
       state.data.stores.forEach(store => {
         const amEmail = String(state.data.storeAMs[store] || '').trim().toLowerCase();
@@ -1080,6 +1537,7 @@ function removeItem(i){
   delete state.data.storeManagerNames[n];
   delete state.data.storeAMNames[n];
   delete state.data.storeDMNames[n];
+  delete state.data.storeDistricts[n];
   delete state.data.storeEmployees[n];
   state.data.stores.splice(i, 1);
   state.dirty = true;
@@ -1099,7 +1557,7 @@ function saveEdit(){
   if(v){
     const o = state.data.stores[state.editIdx];
     if(o !== v){
-      ['storeManagers','storeAMs','storeDMs','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'].forEach(key => {
+      ['storeManagers','storeAMs','storeDMs','storeDistricts','storeManagerNames','storeAMNames','storeDMNames','storeEmployees'].forEach(key => {
         if(state.data[key][o] !== undefined){
           state.data[key][v] = state.data[key][o];
           delete state.data[key][o];
@@ -1130,6 +1588,15 @@ function updateStoreField(i, key, inputEl){
 
 async function saveToGitHub(){
   if(state.saving || !state.dirty) return;
+  // District rules are checked here so a bad district can never reach the file:
+  // hard errors block the save, unassigned stores only warn.
+  const check = validateDistricts();
+  if(check.errors.length){
+    showToast('Fix districts first — ' + check.errors[0], 'error');
+    if(state.tab !== 'districts'){ switchTab('districts'); } else { renderActive(); }
+    return;
+  }
+  const unassignedCount = check.unassigned.length;
   state.saving = true;
   renderActive();
   try {
@@ -1137,7 +1604,7 @@ async function saveToGitHub(){
     state.dirty = false;
     state.saving = false;
     renderActive();
-    showToast('Saved to GitHub ✓','success');
+    showToast('Saved to GitHub ✓' + (unassignedCount ? ' — ' + unassignedCount + ' store' + (unassignedCount===1?'':'s') + ' still without a district' : ''),'success');
   } catch (err) {
     console.error(err);
     state.saving = false;
