@@ -153,7 +153,7 @@ const ADMIN_PASS = 'Password123!';
 const FALLBACK_EMAIL = 'jbilbrey@blufoxmobile.com';
 
 // ---- Bundled defaults (used on FIRST init only — if data file doesn't exist yet) ----
-const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Michigan City Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","Skokie Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
+const DEFAULT_STORES = ["Bourbonnais Xfinity Store","Burbank Xfinity Store","Calumet City Xfinity Store","Cicero Xfinity Store","Dekalb Xfinity Store","Elkhart Xfinity Store","Evanston Xfinity Store","Evergreen Park Xfinity Store","Frankfort Xfinity Store","Glenview Xfinity Store","Greeneville Xfinity Store","Hammond Xfinity Store","Johnson City Xfinity Store","Kildeer Xfinity Store","Machesney Park Xfinity Store","Michigan City Xfinity Store","North Knoxville Xfinity Store","Oak Lawn Xfinity Store","Oak Ridge Xfinity Store","Round Lake Beach Xfinity Store","Schererville Xfinity Store","South Bend Xfinity Store","South Knoxville Xfinity Store","South Skokie Xfinity Store","Tinley Park Xfinity Store","Uptown Xfinity Store","Valparaiso Xfinity Store"];
 
 // ---- Bundled district defaults (used ONLY when the data file has no "districts"
 //      key yet — the one-time migration). Store names here are the short form;
@@ -205,15 +205,67 @@ const STORE_CROSSWALK = {
   "Tinley Park Xfinity Store": "55002",
   "Uptown Xfinity Store": "55009",
   "Valparaiso Xfinity Store": "55000",
-  "Machesney Park Xfinity Store": "51038"
-  // Oak Lawn and North Knoxville: add here once their roster Store Numbers are known, e.g.
-  // ,"Oak Lawn Xfinity Store": "NNNNN"
-  // ,"North Knoxville Xfinity Store": "NNNNN"
+  "Machesney Park Xfinity Store": "51038",
+  "North Knoxville Xfinity Store": "51045",
+  "Oak Lawn Xfinity Store": "51039"
 };
 
-// Roster roles that are MANAGERS (handled by the Stores & Managers tab) — excluded
-// from the rep list. Everything else with an email counts as a rep.
+// ---- Account-name crosswalk: roster "Account Name" (column U) -> directory store ----
+// PRIMARY match key. Column U is the roster's own label for the location
+// ("BF-North Knoxville", "LTM-Oak Lawn, IL"); Store Number is the fallback when a
+// row's Account Name isn't recognized. Matching ignores case, spaces, dashes and
+// commas, so "LTM- Cal City" and "LTM-Cal City" both land on Calumet City.
+// Verified 9-14-2026 against "BluFox Active Roster 9.10.2026".
+const ACCOUNT_CROSSWALK = {
+  "LTM-Bourbonnais IL": "Bourbonnais Xfinity Store",
+  "LTM-Burbank, IL": "Burbank Xfinity Store",
+  "LTM- Cal City": "Calumet City Xfinity Store",
+  "LTM-Cicero IL": "Cicero Xfinity Store",
+  "LTM-Dekalb IL": "Dekalb Xfinity Store",
+  "LTM-Elkhart IN": "Elkhart Xfinity Store",
+  "LTM-Evanston IL": "Evanston Xfinity Store",
+  "LTM-Evergreen Park IL": "Evergreen Park Xfinity Store",
+  "LTM-Frankfort IL": "Frankfort Xfinity Store",
+  "LTM-Glenview IL": "Glenview Xfinity Store",
+  "BF-Greeneville TN": "Greeneville Xfinity Store",
+  "LTM-Hammond Mills IN": "Hammond Xfinity Store",
+  "BF-Johnson City, TN": "Johnson City Xfinity Store",
+  "LTM-Kildeer IL": "Kildeer Xfinity Store",
+  "LTM-Machesney Park, IL": "Machesney Park Xfinity Store",
+  "LTM-Michigan City IN": "Michigan City Xfinity Store",
+  "BF-North Knoxville": "North Knoxville Xfinity Store",
+  "LTM-Oak Lawn, IL": "Oak Lawn Xfinity Store",
+  "BF-Oak Ridge TN": "Oak Ridge Xfinity Store",
+  "LTM-Round Lake Beach": "Round Lake Beach Xfinity Store",
+  "LTM-Schererville, IN": "Schererville Xfinity Store",
+  "LTM-South Bend, IN": "South Bend Xfinity Store",
+  "BF-South Knoxville TN": "South Knoxville Xfinity Store",
+  "LTM-South Skokie, IL": "South Skokie Xfinity Store",
+  "LTM-Tinley Park IL": "Tinley Park Xfinity Store",
+  "LTM-Chicago IL": "Uptown Xfinity Store",
+  "LTM-Valparaiso IN": "Valparaiso Xfinity Store"
+};
+
+// Normalizer for account names: case/punctuation/space insensitive.
+function normAcct(v){ return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+// normalized account name -> directory store name
+const ACCT_LOOKUP = {};
+Object.keys(ACCOUNT_CROSSWALK).forEach(a => { ACCT_LOOKUP[normAcct(a)] = ACCOUNT_CROSSWALK[a]; });
+
+// Every store the roster can fill (either key). Used to decide which stores get
+// wiped and rebuilt on upload.
+const ROSTER_STORES = new Set(
+  Object.keys(STORE_CROSSWALK).concat(Object.values(ACCOUNT_CROSSWALK))
+);
+
+// Roster roles that are MANAGERS (Stores & Managers tab) — excluded from the rep list.
 const MANAGER_ROLES = new Set(["store manager","assistant store manager","district manager"]);
+// Only this role becomes a store rep. Trainers, HQ and HR rows never land in a
+// store's rep list even when they carry a store number.
+const REP_ROLES = new Set(["sales consultant"]);
+const SM_ROLE = "store manager";
+const AM_ROLE = "assistant store manager";
 
 // ============================================================================
 //  STATE
@@ -1074,18 +1126,20 @@ function renderEmployees(){
   const stores = state.data.stores;
   const emp = state.data.storeEmployees || {};
   const totalReps = stores.reduce((n, s) => n + ((emp[s] || []).length), 0);
-  const subtitle = "Upload the BluFox Active Roster (.xlsx) to load every rep's name + email per store. Managers are handled on the other tab — this list is reps only. Saved to storeEmployees in store-directory.json.";
+  const subtitle = "Upload the BluFox Active Roster (.xlsx) to load every rep's name + email per store. Sales Consultants land here; Store Managers and Assistant Managers are written straight to the Stores & Managers tab. Saved to store-directory.json.";
 
-  const lastUploadHtml = state.lastUpload ? `
+  const lu = state.lastUpload;
+  const lastUploadHtml = lu ? `
     <div class="card" style="padding:14px 18px;margin-bottom:14px;border-color:var(--green)">
-      <div style="font-size:13px;color:var(--text);font-weight:600">Loaded <strong style="color:var(--green)">${state.lastUpload.repCount}</strong> reps across <strong style="color:var(--green)">${state.lastUpload.matchedStores}</strong> stores${(state.lastUpload.amNamesFilled != null) ? ` · filled <strong style="color:var(--green)">${state.lastUpload.amNamesFilled}</strong> Assistant Manager name${state.lastUpload.amNamesFilled === 1 ? '' : 's'}` : ''} from <span style="color:var(--muted)">${escapeHtml(state.lastUpload.fileName)}</span></div>
-      ${state.lastUpload.skipped && state.lastUpload.skipped.length ? `<p class="hint" style="margin-top:8px">${state.lastUpload.skipped.length} roster location(s) not in this directory were skipped (e.g. ${escapeHtml(state.lastUpload.skipped.slice(0,3).map(x=>x.store).join(', '))}${state.lastUpload.skipped.length>3?'…':''}). That's expected — only the ${Object.keys(STORE_CROSSWALK).length} mapped stores are tracked here.</p>` : ''}
-      ${state.lastUpload.noMatch && state.lastUpload.noMatch.length ? `<p class="hint" style="margin-top:6px;color:var(--warn)">No roster match for: ${escapeHtml(state.lastUpload.noMatch.join(', '))}. Add a Store Number to STORE_CROSSWALK or enter reps manually below.</p>` : ''}
+      <div style="font-size:13px;color:var(--text);font-weight:600">Loaded <strong style="color:var(--green)">${lu.repCount}</strong> reps across <strong style="color:var(--green)">${lu.matchedStores}</strong> stores${(lu.smFilled != null) ? ` · <strong style="color:var(--green)">${lu.smFilled}</strong> manager${lu.smFilled === 1 ? '' : 's'} · <strong style="color:var(--green)">${lu.amFilled}</strong> assistant manager${lu.amFilled === 1 ? '' : 's'}` : ''} from <span style="color:var(--muted)">${escapeHtml(lu.fileName)}</span></div>
+      ${lu.conflicts && lu.conflicts.length ? `<p class="hint" style="margin-top:8px;color:var(--warn)">${lu.conflicts.length} slot(s) had more than one person in the roster and were left as-is — set them by hand on the Stores &amp; Managers tab: ${escapeHtml(lu.conflicts.map(c => `${c.store.replace(' Xfinity Store','')} ${c.label} (${c.people.join(' / ')})`).join('; '))}.</p>` : ''}
+      ${lu.skipped && lu.skipped.length ? `<p class="hint" style="margin-top:8px">${lu.skipped.length} roster location(s) outside this directory were skipped (e.g. ${escapeHtml(lu.skipped.slice(0,3).map(x=>x.store).join(', '))}${lu.skipped.length>3?'…':''}). That's expected — only the ${state.data.stores.filter(x => ROSTER_STORES.has(x)).length} mapped stores are tracked here.</p>` : ''}
+      ${lu.noMatch && lu.noMatch.length ? `<p class="hint" style="margin-top:6px;color:var(--warn)">No roster match for: ${escapeHtml(lu.noMatch.join(', '))}. Add its Account Name to ACCOUNT_CROSSWALK or enter reps manually below.</p>` : ''}
     </div>` : '';
 
   const buildEmpRow = (store, i) => {
     const list = emp[store] || [];
-    const inCrosswalk = Object.prototype.hasOwnProperty.call(STORE_CROSSWALK, store);
+    const inCrosswalk = ROSTER_STORES.has(store);
     const badge = list.length
       ? `<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:20px;letter-spacing:.04em">${list.length} REP${list.length===1?'':'S'}</span>`
       : (inCrosswalk
@@ -1123,9 +1177,9 @@ function renderEmployees(){
       <label class="lbl" style="margin-bottom:6px">Upload Active Roster (.xlsx)</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input type="file" id="rosterFile" accept=".xlsx,.xls" style="flex:1;min-width:220px;font-size:13px;color:var(--muted)">
-        <button id="parseBtn" onclick="handleRosterUpload()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">Load Reps</button>
+        <button id="parseBtn" onclick="handleRosterUpload()" style="padding:10px 20px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">Load Roster</button>
       </div>
-      <p class="hint" style="margin-top:8px">Reads columns <strong>First Name</strong>, <strong>Last Name</strong>, <strong>Store Number</strong>, <strong>Role</strong>, and <strong>Email</strong>. Matches each row to a store by Store Number, keeps non-manager roles, and <strong>replaces</strong> the rep list (name + email) for every matched store.</p>
+      <p class="hint" style="margin-top:8px">Reads <strong>First Name</strong>, <strong>Last Name</strong>, <strong>Account Name</strong> (column U), <strong>Store Number</strong>, <strong>Role</strong> (column D) and <strong>Email</strong>. Each row is matched to a store by Account Name — e.g. <em>BF-North Knoxville</em> → North Knoxville Xfinity Store — falling back to Store Number. Role decides where the person lands: <strong>Sales Consultant</strong> → the rep list below (<strong>replaced</strong> for every matched store), <strong>Store Manager</strong> and <strong>Assistant Store Manager</strong> → the Mgr/AM name + email fields on the Stores &amp; Managers tab. District Managers, Trainers and HQ are ignored.</p>
     </div>
 
     ${lastUploadHtml}
@@ -1142,7 +1196,8 @@ function renderEmployees(){
   </div>`;
 }
 
-// Parse the uploaded roster workbook and populate storeEmployees (reps only).
+// Parse the uploaded roster workbook: rebuild each store's rep list (Sales
+// Consultants) and fill in Store Manager / Assistant Manager from the roster.
 function handleRosterUpload(){
   const input = document.getElementById('rosterFile');
   const file = input && input.files && input.files[0];
@@ -1159,58 +1214,76 @@ function handleRosterUpload(){
       if(!rows.length) throw new Error('Workbook is empty');
 
       // Locate header row + the columns we need (by name, case-insensitive).
-      let hr = -1, cStore = -1, cRole = -1, cEmail = -1, cFirst = -1, cLast = -1;
+      let hr = -1, cStore = -1, cRole = -1, cEmail = -1, cFirst = -1, cLast = -1, cAcct = -1;
       for(let i = 0; i < Math.min(10, rows.length); i++){
         const r = (rows[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
-        const si = r.findIndex(c => c === 'store number' || c === 'store #' || c === 'store number ');
+        const si = r.findIndex(c => c === 'store number' || c === 'store #');
+        const ai = r.findIndex(c => c === 'account name' || c === 'account');
         const ri = r.findIndex(c => c === 'role');
         const ei = r.findIndex(c => c === 'email');
-        if(si >= 0 && ei >= 0){
-          hr = i; cStore = si; cRole = ri; cEmail = ei;
+        if(ei >= 0 && (si >= 0 || ai >= 0)){
+          hr = i; cStore = si; cAcct = ai; cRole = ri; cEmail = ei;
           cFirst = r.findIndex(c => c === 'first name' || c === 'first');
           cLast  = r.findIndex(c => c === 'last name'  || c === 'last');
           break;
         }
       }
-      if(hr < 0) throw new Error('Could not find a header row with "Store Number" and "Email" columns. Is this the Active Roster export?');
+      if(hr < 0) throw new Error('Could not find a header row with "Email" plus "Account Name" or "Store Number". Is this the Active Roster export?');
 
-      // store number -> directory store name (first crosswalk match wins)
+      // store number -> directory store name (fallback key; first match wins)
       const num2store = {};
       Object.keys(STORE_CROSSWALK).forEach(name => {
         const num = String(STORE_CROSSWALK[name]);
         if(!(num in num2store)) num2store[num] = name;
       });
 
-      const byStore = {};                 // directory store -> Map(emailLower -> {first,last,email})
-      const skippedCount = {};            // roster store# (not mapped) -> count
-      let repRows = 0;
+      const byStore = {};                 // store -> Map(emailLower -> {first,last,email})
+      const smByStore = {};               // store -> [{name,email}]
+      const amByStore = {};               // store -> [{name,email}]
+      const skippedCount = {};            // unmapped roster location label -> count
+      const emailToName = {};             // emailLower -> "First Last" (whole roster)
       const clean = v => String(v == null ? '' : v).replace(/ /g, ' ').trim();
+
       for(let i = hr + 1; i < rows.length; i++){
         const r = rows[i];
         if(!r) continue;
-        const rawNum = clean(r[cStore]);
-        const email  = clean(r[cEmail]).toLowerCase();
-        const role   = (cRole >= 0) ? clean(r[cRole]).toLowerCase() : '';
+        const email = clean(cEmail >= 0 ? r[cEmail] : '').toLowerCase();
         if(!email || email.indexOf('@') < 0) continue;
-        if(MANAGER_ROLES.has(role)) continue;          // reps only — skip managers
-        const num = rawNum.match(/\d{4,6}/) ? rawNum.match(/\d{4,6}/)[0] : rawNum;
-        const storeName = num2store[num];
-        if(!storeName){ if(num) skippedCount[num] = (skippedCount[num]||0)+1; continue; }
         const first = cFirst >= 0 ? clean(r[cFirst]) : '';
         const last  = cLast  >= 0 ? clean(r[cLast])  : '';
-        const m = (byStore[storeName] = byStore[storeName] || new Map());
-        if(!m.has(email)) m.set(email, { first, last, email });
-        repRows++;
+        const name  = (first + ' ' + last).replace(/\s+/g, ' ').trim();
+        if(name && !emailToName[email]) emailToName[email] = name;
+
+        const role = (cRole >= 0) ? clean(r[cRole]).toLowerCase() : '';
+        const rawAcct = cAcct >= 0 ? clean(r[cAcct]) : '';
+        const rawNum  = cStore >= 0 ? clean(r[cStore]) : '';
+        const num = rawNum.match(/\d{4,6}/) ? rawNum.match(/\d{4,6}/)[0] : rawNum;
+
+        // Account Name (column U) is the primary key; Store Number is the fallback.
+        const storeName = ACCT_LOOKUP[normAcct(rawAcct)] || num2store[num];
+        if(!storeName){
+          const label = rawAcct || num;
+          if(label) skippedCount[label] = (skippedCount[label] || 0) + 1;
+          continue;
+        }
+
+        if(REP_ROLES.has(role)){
+          const m = (byStore[storeName] = byStore[storeName] || new Map());
+          if(!m.has(email)) m.set(email, { first, last, email });
+        } else if(role === SM_ROLE){
+          (smByStore[storeName] = smByStore[storeName] || []).push({ name, email });
+        } else if(role === AM_ROLE){
+          (amByStore[storeName] = amByStore[storeName] || []).push({ name, email });
+        }
+        // District Managers, Trainers, HQ and HR rows are ignored here.
       }
 
       // A new upload is the source of truth: wipe every roster-mapped store's rep
       // list first, so employees who left (and stores that are now empty) don't
-      // linger from a previous upload. Manually-added stores outside the roster
-      // crosswalk are left untouched.
-      Object.keys(STORE_CROSSWALK).forEach(store => { delete state.data.storeEmployees[store]; });
+      // linger from a previous upload. Stores outside the roster map are untouched.
+      ROSTER_STORES.forEach(store => { delete state.data.storeEmployees[store]; });
 
-      // Rebuild the rep list for every matched store from the uploaded file.
-      // Each rep is stored as { first, last, email } and sorted by last then first name.
+      // Rebuild the rep list for every matched store, sorted by last then first name.
       let matchedStores = 0, repCount = 0;
       Object.keys(byStore).forEach(store => {
         const arr = Array.from(byStore[store].values()).sort((a, b) =>
@@ -1219,20 +1292,38 @@ function handleRosterUpload(){
         matchedStores++; repCount += arr.length;
       });
 
-      // Fill in Assistant Manager NAMES from the roster, matched by the AM email
-      // already saved for each store. (Managers type the AM email; this looks up
-      // the matching person in the roster and sets their name — no manual typing.)
-      const emailToName = {};
-      for(let i = hr + 1; i < rows.length; i++){
-        const r = rows[i];
-        if(!r) continue;
-        const em = clean(r[cEmail]).toLowerCase();
-        if(!em || em.indexOf('@') < 0) continue;
-        if(!emailToName[em]){
-          const nm = ((cFirst >= 0 ? clean(r[cFirst]) : '') + ' ' + (cLast >= 0 ? clean(r[cLast]) : '')).trim();
-          if(nm) emailToName[em] = nm;
+      // ---- Managers: fill Store Manager + Assistant Manager from column D ----
+      // One roster row for the slot  -> set name + email.
+      // Several rows for one slot    -> keep whichever is already saved if it's one
+      //                                 of them (just refresh the name), otherwise
+      //                                 leave it alone and flag it below, so a stale
+      //                                 roster never silently replaces your entry.
+      const conflicts = [];
+      let smFilled = 0, amFilled = 0;
+      const fillSlot = (store, people, emailKey, nameKey, label) => {
+        const list = people || [];
+        const current = String(state.data[emailKey][store] || '').trim().toLowerCase();
+        if(!list.length) return 0;
+        let pick = null;
+        if(list.length === 1){
+          pick = list[0];
+        } else {
+          pick = list.find(x => x.email === current) || null;
+          if(!pick){
+            conflicts.push({ store, label, people: list.map(x => x.name || x.email) });
+            return 0;
+          }
         }
-      }
+        if(String(state.data[emailKey][store] || '').toLowerCase() !== pick.email) state.data[emailKey][store] = pick.email;
+        if(pick.name) state.data[nameKey][store] = pick.name;
+        return 1;
+      };
+      state.data.stores.forEach(store => {
+        if(!ROSTER_STORES.has(store)) return;
+        smFilled += fillSlot(store, smByStore[store], 'storeManagers', 'storeManagerNames', 'Store Manager');
+        amFilled += fillSlot(store, amByStore[store], 'storeAMs',      'storeAMNames',      'Assistant Manager');
+      });
+
       // The roster also carries the district managers, so use it to learn/refresh
       // DM display names (the Districts tab writes them out to storeDMNames).
       Object.keys(emailToName).forEach(em => {
@@ -1240,36 +1331,40 @@ function handleRosterUpload(){
       });
       syncAllDistrictDerived();
 
-      let amNamesFilled = 0;
+      // Any manager email typed by hand that the roster knows a name for: fill the
+      // name in (covers stores left alone by the conflict rule above).
       state.data.stores.forEach(store => {
-        const amEmail = String(state.data.storeAMs[store] || '').trim().toLowerCase();
-        if(!amEmail) return;
-        const nm = emailToName[amEmail];
-        if(nm && state.data.storeAMNames[store] !== nm){ state.data.storeAMNames[store] = nm; amNamesFilled++; }
-        else if(nm){ amNamesFilled++; }
+        [['storeManagers','storeManagerNames'], ['storeAMs','storeAMNames']].forEach(([ek, nk]) => {
+          const em = String(state.data[ek][store] || '').trim().toLowerCase();
+          if(!em) return;
+          const nm = emailToName[em];
+          if(nm && state.data[nk][store] !== nm) state.data[nk][store] = nm;
+        });
       });
 
-      // Directory stores that ARE in the crosswalk but got zero rows this upload.
+      // Roster-mapped directory stores that got zero rows this upload.
       const noMatch = state.data.stores.filter(s =>
-        Object.prototype.hasOwnProperty.call(STORE_CROSSWALK, s) && !(state.data.storeEmployees[s] && state.data.storeEmployees[s].length)
+        ROSTER_STORES.has(s) && !(state.data.storeEmployees[s] && state.data.storeEmployees[s].length)
       );
 
       state.lastUpload = {
         fileName: file.name,
         matchedStores,
         repCount,
-        amNamesFilled,
+        smFilled,
+        amFilled,
+        conflicts,
         skipped: Object.keys(skippedCount).map(n => ({ store: n, count: skippedCount[n] })),
         noMatch
       };
       state.dirty = true;
       renderEmployees();
-      showToast(`Loaded ${repCount} reps across ${matchedStores} stores · ${amNamesFilled} AM names`, 'success');
+      showToast(`Loaded ${repCount} reps across ${matchedStores} stores · ${smFilled} managers · ${amFilled} assistant managers`, 'success');
     } catch(err){
       console.error(err);
       showToast('Parse failed: ' + (err.message || 'unknown'), 'error');
       const b = document.getElementById('parseBtn');
-      if(b){ b.disabled = false; b.textContent = 'Load Reps'; }
+      if(b){ b.disabled = false; b.textContent = 'Load Roster'; }
     }
   };
   reader.onerror = () => { showToast('Could not read that file', 'error'); };
