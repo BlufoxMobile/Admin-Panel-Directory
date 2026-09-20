@@ -63,6 +63,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)!important;box
 .grp-btn.on{border-color:var(--accent);background:rgba(59,130,246,.14)}
 .grp-btn .g-name{font-size:14px;font-weight:700;color:var(--text)}
 .grp-btn .g-count{font-size:11px;color:var(--muted);margin-top:2px}
+.dist-btn{text-align:left;padding:10px 13px;border-radius:10px;border:1.5px solid var(--inpb);background:var(--inp);cursor:pointer;transition:border-color .15s,background .15s}
+.dist-btn:hover{border-color:var(--accent)}
+.dist-btn.on{border-color:var(--accent);background:rgba(59,130,246,.14)}
+.dist-btn .g-name{font-size:13px;font-weight:700;color:var(--text)}
+.dist-btn .g-count{font-size:11px;color:var(--muted);margin-top:2px}
+.role-chip{display:inline-flex;align-items:center;gap:6px;background:var(--inp);border:1.5px solid var(--inpb);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;transition:border-color .15s,background .15s,color .15s}
+.role-chip:hover{border-color:var(--accent)}
+.role-chip.on{border-color:var(--accent);background:rgba(59,130,246,.14);color:var(--text)}
 textarea.inp{resize:vertical;line-height:1.5}
 </style>
 </head>
@@ -95,10 +103,20 @@ textarea.inp{resize:vertical;line-height:1.5}
     <label class="lbl">Recipient groups (whole region)</label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="groupBtns"></div>
 
-    <label class="lbl">Or add one district's or one store's team</label>
+    <div id="districtBlock" style="margin-bottom:16px">
+      <label class="lbl">Districts</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin-right:2px">Include</span>
+        <span id="districtRoleFilter" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px" id="districtBtns"></div>
+      <p class="hint" style="margin:8px 0 0">Click a district to add everyone in it. Use the Include chips above to narrow it to just that district's managers, assistant managers or reps.</p>
+    </div>
+
+    <label class="lbl">Or add one store's team</label>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <select class="inp" id="storePick" style="flex:1;padding:10px 12px;font-size:13px" onchange="addTeamPick(this.value); this.selectedIndex=0;">
-        <option value="">— Pick a district or a store to add its managers, AMs, DM &amp; reps —</option>
+        <option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>
       </select>
     </div>
 
@@ -1469,8 +1487,29 @@ const DISTRICT_PICK_PREFIX = 'district:';
 // it — manager, AM, DM and reps, exactly what emailsForStore() collects — plus
 // the district's own DM, so a district with no stores yet still reaches its DM.
 function emailsForDistrict(id){
+  return emailsForDistrictRoles(id, ALL_DISTRICT_ROLES);
+}
+// Which roles a district button pulls in. The chips above the district buttons
+// flip these; every district button reads the same object, so narrowing to
+// "Store Managers" narrows all of them at once.
+const DISTRICT_ROLE_DEFS = [
+  { k:'dm',   label:'District Manager' },
+  { k:'sm',   label:'Store Managers' },
+  { k:'asm',  label:'Assistant Managers' },
+  { k:'reps', label:'Reps' }
+];
+const ALL_DISTRICT_ROLES = { dm:true, sm:true, asm:true, reps:true };
+const districtRoles = { dm:true, sm:true, asm:true, reps:true };
+function anyDistrictRoleOn(){
+  return DISTRICT_ROLE_DEFS.some(r => districtRoles[r.k]);
+}
+// Emails (deduped, case-insensitively) for one district, limited to the roles
+// asked for. The district's own DM is included with the DM role so a district
+// with no stores yet still reaches its manager.
+function emailsForDistrictRoles(id, roles){
   const d = districtById(id);
   if(!d) return [];
+  const r = roles || districtRoles;
   const out = [];
   const seen = new Set();
   const add = e => {
@@ -1479,8 +1518,13 @@ function emailsForDistrict(id){
     const k = v.toLowerCase();
     if(!seen.has(k)){ seen.add(k); out.push(v); }
   };
-  add(d.dm);
-  districtStores(id).forEach(store => emailsForStore(store).forEach(add));
+  if(r.dm) add(d.dm);
+  districtStores(id).forEach(store => {
+    if(r.sm)  add(state.data.storeManagers[store]);
+    if(r.asm) add(state.data.storeAMs[store]);
+    if(r.dm)  add(state.data.storeDMs[store]);
+    if(r.reps) (state.data.storeEmployees[store] || []).forEach(entry => add(repFields(entry).email));
+  });
   return out;
 }
 // The "Districts" optgroup for the picker. Districts are labelled the way the
@@ -1521,6 +1565,7 @@ function addEmailToSel(v){
 function openEmailModal(){
   emailSel.clear();
   emailDisplay.clear();
+  DISTRICT_ROLE_DEFS.forEach(r => { districtRoles[r.k] = true; });
   document.getElementById('emailSubject').value = '';
   document.getElementById('emailBody').value = '';
   document.getElementById('addEmailInput').value = '';
@@ -1528,8 +1573,9 @@ function openEmailModal(){
   const sp = document.getElementById('storePick');
   if(sp){
     const storeOpts = state.data.stores.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
-    sp.innerHTML = '<option value="">— Pick a district or a store to add its managers, AMs, DM &amp; reps —</option>'
-      + districtPickOptions()
+    // Districts have their own buttons (with a role filter) above, so the
+    // picker is stores-only now — one district route, not two that disagree.
+    sp.innerHTML = '<option value="">— Pick a store to add its manager, AM, DM &amp; reps —</option>'
       + `<optgroup label="Stores">${storeOpts}</optgroup>`;
   }
   renderGroupBtns();
@@ -1571,7 +1617,63 @@ function addStoreTeam(store){
 function closeEmailModal(){
   document.getElementById('emailModal').classList.remove('show');
 }
+// ---- District buttons + role filter ---------------------------------------
+function renderDistrictRoleChips(){
+  const box = document.getElementById('districtRoleFilter');
+  if(!box) return;
+  box.innerHTML = DISTRICT_ROLE_DEFS.map(r =>
+    `<span class="role-chip ${districtRoles[r.k] ? 'on' : ''}" onclick="toggleDistrictRole('${r.k}')">${districtRoles[r.k] ? '&check; ' : ''}${escapeHtml(r.label)}</span>`
+  ).join('');
+}
+function toggleDistrictRole(k){
+  districtRoles[k] = !districtRoles[k];
+  if(!anyDistrictRoleOn()) showToast('Pick at least one role for the district buttons','info');
+  renderDistrictRoleChips();
+  renderDistrictBtns();
+}
+function renderDistrictBtns(){
+  const wrap = document.getElementById('districtBtns');
+  const blk  = document.getElementById('districtBlock');
+  if(!wrap) return;
+  const ds = Array.isArray(state.data.districts) ? state.data.districts : [];
+  // No districts on file yet (a data file that predates the district layer) —
+  // hide the whole block rather than show an empty row.
+  if(blk) blk.style.display = ds.length ? '' : 'none';
+  if(ds.length === 0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = ds.map(d => {
+    const list = emailsForDistrictRoles(d.id, districtRoles);
+    const on = groupIsOn(list);
+    const n = list.length;
+    const nm = districtDmName(d);
+    return `<button class="dist-btn ${on ? 'on' : ''}" ${n === 0 ? 'style="opacity:.55;cursor:not-allowed"' : ''} onclick="toggleDistrict('${escapeAttr(d.id)}')">
+      <div class="g-name">${on ? '&check; ' : ''}${escapeHtml(d.name || d.id)}</div>
+      <div class="g-count">${nm ? escapeHtml(nm) + ' &middot; ' : ''}${n === 0 ? 'none on file' : n + ' email' + (n === 1 ? '' : 's')}</div>
+    </button>`;
+  }).join('');
+}
+// Toggle every address in one district (under the current role filter) on or
+// off. Dedupe is the recipient Set's, same as the region-wide group buttons.
+function toggleDistrict(id){
+  const d = districtById(id);
+  if(!d) return;
+  const label = d.name || d.id;
+  if(!anyDistrictRoleOn()){ showToast('Pick at least one role above first','error'); return; }
+  const list = emailsForDistrictRoles(id, districtRoles);
+  if(list.length === 0){ showToast('No emails on file for ' + label + ' with those roles','info'); return; }
+  if(groupIsOn(list)){
+    list.forEach(e => emailSel.delete(String(e).trim().toLowerCase()));
+    showToast('Removed ' + list.length + ' from ' + label, 'info');
+  } else {
+    list.forEach(e => addEmailToSel(e));
+    showToast('Added ' + list.length + ' from ' + label, 'success');
+  }
+  renderGroupBtns();
+  renderRecipientChips();
+}
+
 function renderGroupBtns(){
+  renderDistrictRoleChips();
+  renderDistrictBtns();
   const g = emailGroups();
   document.getElementById('groupBtns').innerHTML = Object.keys(g).map(k => {
     const on = groupIsOn(g[k].list);
