@@ -103,6 +103,12 @@ textarea.inp{resize:vertical;line-height:1.5}
     <label class="lbl">Recipient groups (whole region)</label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="groupBtns"></div>
 
+    <div id="regionBlock" style="margin-bottom:16px">
+      <label class="lbl">Chicago / Big South</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px" id="regionBtns"></div>
+      <p class="hint" style="margin:8px 0 0">Big South is the Tennessee district; Chicago is every other district. "All" means the DMs, store managers, assistant managers and reps; the Store Managers buttons add only the store managers.</p>
+    </div>
+
     <div id="districtBlock" style="margin-bottom:16px">
       <label class="lbl">Districts</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
@@ -1552,6 +1558,75 @@ function emailGroups(){
     reps: { name: 'Reps (all stores)',   list: uniqEmailsFromArrays(state.data.storeEmployees) }
   };
 }
+// ---- Chicago / Big South region groups ------------------------------------
+// The Tennessee stores are the district called "Big South"; every OTHER district
+// is a Chicago-area district. Regions are derived from districts on every render,
+// so moving a store between districts on the Districts tab moves it between
+// regions too. A store with no district yet is in neither region.
+function isBigSouthDistrict(d){
+  if(!d) return false;
+  return String(d.id || '').toLowerCase() === 'big-south'
+      || /big\s*south/i.test(String(d.name || ''));
+}
+function regionDistricts(region){
+  const ds = Array.isArray(state.data.districts) ? state.data.districts : [];
+  return ds.filter(d => region === 'bigsouth' ? isBigSouthDistrict(d) : !isBigSouthDistrict(d));
+}
+function emailsForRegionRoles(region, roles){
+  const out = [];
+  const seen = new Set();
+  regionDistricts(region).forEach(d => {
+    emailsForDistrictRoles(d.id, roles).forEach(e => {
+      const k = String(e).trim().toLowerCase();
+      if(!seen.has(k)){ seen.add(k); out.push(String(e).trim()); }
+    });
+  });
+  return out;
+}
+const SM_ONLY_ROLES = { dm:false, sm:true, asm:false, reps:false };
+const REGION_GROUP_DEFS = [
+  { k:'chi-all', name:'All Chicago',                  region:'chicago',  roles: ALL_DISTRICT_ROLES },
+  { k:'chi-sm',  name:'All Chicago Store Managers',   region:'chicago',  roles: SM_ONLY_ROLES },
+  { k:'bs-all',  name:'All Big South',                region:'bigsouth', roles: ALL_DISTRICT_ROLES },
+  { k:'bs-sm',   name:'All Big South Store Managers', region:'bigsouth', roles: SM_ONLY_ROLES }
+];
+function regionGroupList(k){
+  const g = REGION_GROUP_DEFS.find(x => x.k === k);
+  return g ? emailsForRegionRoles(g.region, g.roles) : [];
+}
+function renderRegionBtns(){
+  const wrap = document.getElementById('regionBtns');
+  const blk  = document.getElementById('regionBlock');
+  if(!wrap) return;
+  const ds = Array.isArray(state.data.districts) ? state.data.districts : [];
+  if(blk) blk.style.display = ds.length ? '' : 'none';
+  if(ds.length === 0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = REGION_GROUP_DEFS.map(g => {
+    const list = regionGroupList(g.k);
+    const on = groupIsOn(list);
+    const n = list.length;
+    const stores = regionDistricts(g.region).reduce((t, d) => t + districtStores(d.id).length, 0);
+    return `<button class="grp-btn ${on ? 'on' : ''}" ${n === 0 ? 'style="opacity:.55;cursor:not-allowed"' : ''} onclick="toggleRegionGroup('${g.k}')">
+      <div class="g-name">${on ? '&check; ' : ''}${escapeHtml(g.name)}</div>
+      <div class="g-count">${stores} store${stores === 1 ? '' : 's'} &middot; ${n === 0 ? 'none on file' : n + ' email' + (n === 1 ? '' : 's')}</div>
+    </button>`;
+  }).join('');
+}
+function toggleRegionGroup(k){
+  const g = REGION_GROUP_DEFS.find(x => x.k === k);
+  if(!g) return;
+  const list = regionGroupList(k);
+  if(list.length === 0){ showToast('No emails on file for ' + g.name + ' yet','info'); return; }
+  if(groupIsOn(list)){
+    list.forEach(e => emailSel.delete(String(e).trim().toLowerCase()));
+    showToast('Removed ' + list.length + ' — ' + g.name, 'info');
+  } else {
+    list.forEach(e => addEmailToSel(e));
+    showToast('Added ' + list.length + ' — ' + g.name, 'success');
+  }
+  renderGroupBtns();
+  renderRecipientChips();
+}
 function groupIsOn(list){
   return list.length > 0 && list.every(e => emailSel.has(String(e).trim().toLowerCase()));
 }
@@ -1672,6 +1747,7 @@ function toggleDistrict(id){
 }
 
 function renderGroupBtns(){
+  renderRegionBtns();
   renderDistrictRoleChips();
   renderDistrictBtns();
   const g = emailGroups();
