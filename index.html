@@ -291,6 +291,78 @@ const REP_ROLES = new Set(["sales consultant"]);
 const SM_ROLE = "store manager";
 const AM_ROLE = "assistant store manager";
 
+// ---- Name corrections ------------------------------------------------------
+// The Active Roster export has a few names spelled wrong at the source. Each
+// fix is keyed by the person's email (the one thing the roster always gets
+// right), and `wrong` lists the misspelled full names to catch on entries that
+// carry no email. These are applied on every roster upload AND every time the
+// directory loads, so a typo can never come back into store-directory.json.
+// To add one: copy a line, set the email, the correct first/last, and the typo.
+const NAME_FIXES = [
+  { email: 'darwood@blufoxmobile.com', first: 'Dalton', last: 'Arwood', wrong: ['Dalton Arwodd'] }
+];
+const NAME_FIX_BY_EMAIL = {};
+const NAME_FIX_BY_WRONG = {};
+const normPersonName = v => String(v == null ? '' : v).toLowerCase().replace(/\s+/g, ' ').trim();
+NAME_FIXES.forEach(f => {
+  NAME_FIX_BY_EMAIL[f.email.toLowerCase()] = f;
+  (f.wrong || []).forEach(w => { NAME_FIX_BY_WRONG[normPersonName(w)] = f; });
+});
+// Find the correction (if any) for a person by email first, then by full name.
+function findNameFix(email, fullName){
+  const em = String(email == null ? '' : email).trim().toLowerCase();
+  return (em && NAME_FIX_BY_EMAIL[em]) || NAME_FIX_BY_WRONG[normPersonName(fullName)] || null;
+}
+// Correct a {first,last} pair. Returns the corrected pair (same object shape).
+function fixPersonName(email, first, last){
+  const f = findNameFix(email, (first || '') + ' ' + (last || ''));
+  return f ? { first: f.first, last: f.last } : { first, last };
+}
+// Correct a single "First Last" display string.
+function fixFullName(email, name){
+  const f = findNameFix(email, name);
+  return f ? (f.first + ' ' + f.last) : name;
+}
+// Walk the whole directory and repair any misspelled names in place.
+// Returns how many fields were changed.
+function applyNameFixes(data){
+  if(!data || !NAME_FIXES.length) return 0;
+  let changed = 0;
+  // Store reps
+  Object.keys(data.storeEmployees || {}).forEach(store => {
+    const list = data.storeEmployees[store];
+    if(!Array.isArray(list)) return;
+    list.forEach(entry => {
+      if(!entry || typeof entry !== 'object') return;
+      const first = entry.first || entry.firstName || '';
+      const last  = entry.last  || entry.lastName  || '';
+      const fx = fixPersonName(entry.email, first, last);
+      if(fx.first !== first || fx.last !== last){
+        entry.first = fx.first; entry.last = fx.last;
+        if('firstName' in entry) entry.firstName = fx.first;
+        if('lastName'  in entry) entry.lastName  = fx.last;
+        changed++;
+      }
+    });
+  });
+  // Manager / AM / DM display names, paired with their email maps
+  [['storeManagers','storeManagerNames'], ['storeAMs','storeAMNames'], ['storeDMs','storeDMNames']].forEach(([ek, nk]) => {
+    const names = data[nk] || {};
+    Object.keys(names).forEach(store => {
+      const em = (data[ek] || {})[store];
+      const fixed = fixFullName(em, names[store]);
+      if(fixed !== names[store]){ names[store] = fixed; changed++; }
+    });
+  });
+  // District objects carry their own DM name
+  (data.districts || []).forEach(d => {
+    if(!d || !d.dmName) return;
+    const fixed = fixFullName(d.dm, d.dmName);
+    if(fixed !== d.dmName){ d.dmName = fixed; changed++; }
+  });
+  return changed;
+}
+
 // ============================================================================
 //  STATE
 // ============================================================================
@@ -600,10 +672,13 @@ async function bootstrapAdmin(){
     // district object so districts[].dmName is authoritative from now on.
     const backfilled = backfillDistrictDmNames();
     const synced = syncAllDistrictDerived();
+    // Repair any known misspelled names already saved in the file (NAME_FIXES).
+    const nameFixed = applyNameFixes(state.data);
     if(backfilled) state.dirty = true;
-    if(seeded || synced) state.dirty = true;
+    if(seeded || synced || nameFixed) state.dirty = true;
     renderActive();
     if(result.firstTime) showToast('No directory file found — seeded with defaults. Click Save to commit.','info');
+    else if(nameFixed) showToast('Corrected ' + nameFixed + ' misspelled name' + (nameFixed === 1 ? '' : 's') + ' from the roster. Click Save to commit.','info');
     else if(seeded) showToast('Districts added from the built-in defaults — review the Districts tab, then Save.','info');
     else if(synced) showToast('Refreshed ' + synced + ' store DM field(s) from their district. Click Save to commit.','info');
   } catch (err) {
@@ -1273,8 +1348,12 @@ function handleRosterUpload(){
         if(!r) continue;
         const email = clean(cEmail >= 0 ? r[cEmail] : '').toLowerCase();
         if(!email || email.indexOf('@') < 0) continue;
-        const first = cFirst >= 0 ? clean(r[cFirst]) : '';
-        const last  = cLast  >= 0 ? clean(r[cLast])  : '';
+        // Correct known roster typos (see NAME_FIXES) before the name is used anywhere.
+        const fixedName = fixPersonName(email,
+          cFirst >= 0 ? clean(r[cFirst]) : '',
+          cLast  >= 0 ? clean(r[cLast])  : '');
+        const first = fixedName.first;
+        const last  = fixedName.last;
         const name  = (first + ' ' + last).replace(/\s+/g, ' ').trim();
         if(name && !emailToName[email]) emailToName[email] = name;
 
@@ -1415,7 +1494,8 @@ function addEmp(i, el){
     showToast('That rep is already listed for this store','info');
     return;
   }
-  list.push({ first, last, email });
+  const fx = fixPersonName(email, first, last);
+  list.push({ first: fx.first, last: fx.last, email });
   list.sort((a, b) =>
     (repFields(a).last || '').localeCompare(repFields(b).last || '') ||
     (repFields(a).first || '').localeCompare(repFields(b).first || ''));
@@ -1932,6 +2012,7 @@ async function saveToGitHub(){
     if(state.tab !== 'districts'){ switchTab('districts'); } else { renderActive(); }
     return;
   }
+  applyNameFixes(state.data); // last line of defence: never save a known typo
   const unassignedCount = check.unassigned.length;
   state.saving = true;
   renderActive();
